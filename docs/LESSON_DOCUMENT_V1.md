@@ -26,7 +26,9 @@ type ImageBlock = { id: string; type: 'image'; src: string; alt?: string | null 
 type FormulaBlock = { id: string; type: 'formula'; latex: string }
 ```
 
-表格保留 HTML，以支持 `rowspan`、`colspan`；前端渲染前必须消毒。图片只保存站内 URL，禁止在 JSON 中内嵌 Base64。公式内容为 KaTeX 可接受的 LaTeX。
+表格保留 HTML，以支持 `rowspan`、`colspan`；前端渲染前必须消毒。表格内公式使用 `<span data-latex="..."></span>` 占位，Renderer 将其转换为可编辑 KaTeX 公式。图片只保存站内 URL，禁止在 JSON 中内嵌 Base64。公式内容为 KaTeX 可接受的 LaTeX；编辑保存时可调用 `/api/formulas/validate` 进行 SymPy 结构校验。
+
+当前 Web Renderer 支持会话内基础编辑：文档标题、标题块、段落、列表项、图片说明和表格单元格可通过编辑模式直接修改。PoC 不包含数据库，因此这些修改不会回写源文件，也不会跨页面刷新持久化。
 
 ## 示例
 

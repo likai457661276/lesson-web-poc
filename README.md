@@ -54,6 +54,8 @@ pnpm dev
 
 - `POST /api/documents/parse`：上传文件并创建解析任务
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
+- `POST /api/formulas/validate`：使用 SymPy 校验 LaTeX 结构并返回规范化结果
+- `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
 - `GET /api/assets/{jobId}/{filename}`：读取提取图片
 - `GET /api/health`：健康检查
 

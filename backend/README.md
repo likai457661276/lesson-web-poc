@@ -45,3 +45,18 @@ docker compose up --build app
 ## MinerU 调用流程
 
 服务使用 MinerU v4 精准解析接口：申请批量签名上传地址、PUT 上传、按 `batch_id` 轮询、下载结果 ZIP，并读取 `*_content_list.json`。Parser 保留供应商原始结构，Adapter 才负责生成 LessonDocument。
+
+公式编辑可调用 `POST /api/formulas/validate`，使用 SymPy 检查 LaTeX 是否能转换为符号表达式。该检查不等价于 OCR 与原图一致性验证，最终仍需人工对照原页。
+
+## DOCX 导出
+
+`POST /api/documents/export-docx` 接收 JSON：
+
+```json
+{
+  "html": "<h1>教案标题</h1><p>正文</p>",
+  "filename": "教案.docx"
+}
+```
+
+接口返回可直接下载的 DOCX。支持常见标题、段落、行内强调、列表、表格、公式 LaTeX 文本和 data URL 图片；脚本及嵌入对象会被忽略，远程图片不会由后端主动抓取。

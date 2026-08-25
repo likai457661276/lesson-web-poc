@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.parsers.mineru_parser import MinerUDocumentParser
 from app.services.asset_service import AssetService
 from app.services.document_service import DocumentService
+from app.services.docx_export_service import DocxExportService
 from app.storage.local_storage import LocalStorage
 
 
@@ -27,3 +28,8 @@ def get_document_service() -> DocumentService:
         storage=get_storage(),
         asset_service=get_asset_service(),
     )
+
+
+@lru_cache
+def get_docx_export_service() -> DocxExportService:
+    return DocxExportService()
