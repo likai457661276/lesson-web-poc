@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/venv
+      UV_LINK_MODE: copy
+      DATA_DIR: /data/jobs
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ../data:/data
+    restart: unless-stopped
