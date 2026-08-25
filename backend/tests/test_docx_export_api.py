@@ -1,13 +1,33 @@
+import uuid
 from io import BytesIO
 from zipfile import ZipFile
 
 from docx import Document
 from fastapi.testclient import TestClient
+from fontTools.ttLib import TTFont
+from lxml import etree
 
 from app.main import app
 
 
 client = TestClient(app)
+
+
+def _read_embedded_font(archive: ZipFile, style: str) -> TTFont:
+    font_table = etree.fromstring(archive.read("word/fontTable.xml"))
+    namespaces = {
+        "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    }
+    element_name = "embedRegular" if style == "regular" else "embedBold"
+    font_key = font_table.xpath(
+        f"./w:font[@w:name='Noto Sans SC']/w:{element_name}/@w:fontKey",
+        namespaces=namespaces,
+    )[0]
+    font_data = bytearray(archive.read(f"word/fonts/NotoSansSC-{style}.odttf"))
+    key = uuid.UUID(font_key.strip("{}")).bytes[::-1]
+    for index in range(min(32, len(font_data))):
+        font_data[index] ^= key[index % len(key)]
+    return TTFont(BytesIO(font_data))
 
 
 def test_export_docx_converts_supported_html() -> None:
@@ -47,9 +67,18 @@ def test_export_docx_converts_supported_html() -> None:
     assert document.tables[0].cell(1, 1).text == "1/2"
 
     with ZipFile(BytesIO(response.content)) as archive:
+        content_types_xml = archive.read("[Content_Types].xml").decode()
         document_xml = archive.read("word/document.xml").decode()
+        font_table_xml = archive.read("word/fontTable.xml").decode()
+        font_rels_xml = archive.read("word/_rels/fontTable.xml.rels").decode()
         numbering_xml = archive.read("word/numbering.xml").decode()
+        settings_xml = archive.read("word/settings.xml").decode()
         styles_xml = archive.read("word/styles.xml").decode()
+        embedded_font_parts = sorted(
+            name for name in archive.namelist() if name.startswith("word/fonts/")
+        )
+        regular_font = _read_embedded_font(archive, "regular")
+        bold_font = _read_embedded_font(archive, "bold")
     assert "w:numPr" in document_xml
     assert "w:tblHeader" in document_xml
     assert document_xml.count("<m:oMath>") == 2
@@ -60,7 +89,23 @@ def test_export_docx_converts_supported_html() -> None:
     assert "360^{" not in document_xml
     assert "multilevel" in numbering_xml
     assert 'w:eastAsia="zh-CN"' in styles_xml
-    assert 'w:eastAsia="Songti SC"' in styles_xml
+    assert 'w:eastAsia="Noto Sans SC"' in styles_xml
+    assert embedded_font_parts == [
+        "word/fonts/NotoSansSC-bold.odttf",
+        "word/fonts/NotoSansSC-regular.odttf",
+    ]
+    assert 'w:name="Noto Sans SC"' in font_table_xml
+    assert 'w:altName w:val="Microsoft YaHei"' in font_table_xml
+    assert "w:embedRegular" in font_table_xml
+    assert "w:embedBold" in font_table_xml
+    assert font_rels_xml.count("/relationships/font") == 2
+    assert 'Extension="odttf"' in content_types_xml
+    assert "w:embedTrueTypeFonts" in settings_xml
+    assert "w:saveSubsetFonts" in settings_xml
+    assert ord("三") in regular_font.getBestCmap()
+    assert ord("教") in bold_font.getBestCmap()
+    assert regular_font["OS/2"].fsType == 0
+    assert bold_font["OS/2"].fsType == 0
 
 
 def test_export_docx_keeps_invalid_latex_visible() -> None:

@@ -105,10 +105,16 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .document-block { animation: rise .45s ease both; }
 .document-block:nth-child(2) { animation-delay: .04s; }
 .document-block:nth-child(3) { animation-delay: .08s; }
-.lesson-heading { font-family: ui-serif, 'Songti SC', STSong, serif; color: #182321; }
+.lesson-heading { font-family: ui-serif, 'Songti SC', STSong, serif; color: #182321; white-space: pre-wrap; }
 .lesson-heading-1 { font-size: 28px; margin: 42px 0 20px; }
 .lesson-heading-2 { font-size: 23px; margin: 38px 0 16px; padding-left: 14px; border-left: 3px solid var(--accent); }
 .lesson-heading-3, .lesson-heading-4, .lesson-heading-5, .lesson-heading-6 { font-size: 18px; margin: 30px 0 12px; }
+.lesson-heading-center { width: 100%; padding-left: 0; border-left: 0; text-align: center; }
+.lesson-heading-right { width: 100%; padding-left: 0; border-left: 0; text-align: right; }
+.lesson-heading-1.lesson-heading-center { margin-bottom: 0; font-size: 22px; line-height: 1.35; }
+.lesson-heading-2.lesson-heading-center { margin-bottom: 0; font-size: 22px; line-height: 1.15; }
+.document-block-heading-center + .document-block-heading-center .lesson-heading-2 { margin-top: 22px; }
+.document-block-heading-center + .document-block .lesson-table { margin-top: 14px; }
 .document-block:first-child .lesson-heading { margin-top: 0; }
 .lesson-paragraph, .lesson-list { color: #36423e; font-family: ui-serif, 'Songti SC', STSong, serif; font-size: 16px; line-height: 2; }
 .lesson-paragraph { margin: 0 0 18px; white-space: pre-wrap; }

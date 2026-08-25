@@ -7,7 +7,7 @@ export function HeadingBlock({ block, editable }: { block: Heading; editable: bo
   const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
   return (
     <Tag
-      className={`lesson-heading lesson-heading-${level} editable-copy`}
+      className={`lesson-heading lesson-heading-${level} lesson-heading-${block.alignment} editable-copy`}
       contentEditable={editable}
       suppressContentEditableWarning
       onBlur={(event) => setText(event.currentTarget.textContent?.trim() || text)}

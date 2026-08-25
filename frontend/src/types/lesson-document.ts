@@ -1,4 +1,5 @@
-export type HeadingBlock = { id: string; type: 'heading'; level: number; text: string }
+export type TextAlignment = 'left' | 'center' | 'right'
+export type HeadingBlock = { id: string; type: 'heading'; level: number; text: string; alignment: TextAlignment }
 export type ParagraphBlock = { id: string; type: 'paragraph'; text: string }
 export type ListBlock = { id: string; type: 'list'; items: string[]; ordered: boolean }
 export type TableBlock = { id: string; type: 'table'; html: string }

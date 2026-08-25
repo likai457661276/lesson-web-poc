@@ -30,10 +30,11 @@ class MinerUAdapter:
         asset_urls = asset_urls or {}
         blocks: list[LessonBlock] = []
         title = Path(source_file_name).stem
+        ocr_layout = mineru_result.get("ocr_layout", [])
 
         content_list = self._merge_layout_table_prefixes(mineru_result.get("content_list", []))
         for index, item in enumerate(content_list, start=1):
-            block = self._convert_item(item, index, asset_urls)
+            block = self._convert_item(item, index, asset_urls, ocr_layout)
             if block is None:
                 continue
             blocks.append(block)
@@ -51,7 +52,11 @@ class MinerUAdapter:
         )
 
     def _convert_item(
-        self, item: dict[str, Any], index: int, asset_urls: dict[str, str]
+        self,
+        item: dict[str, Any],
+        index: int,
+        asset_urls: dict[str, str],
+        ocr_layout: Any,
     ) -> LessonBlock | None:
         item_type = str(item.get("type", "")).lower()
         block_id = f"block-{index:04d}"
@@ -65,7 +70,8 @@ class MinerUAdapter:
                 id=block_id,
                 type="heading",
                 level=min(max(level, 1), 6),
-                text=self._plain_text(text),
+                text=self._restore_heading_spacing(self._plain_text(text), item, ocr_layout),
+                alignment=self._heading_alignment(item),
             )
 
         if item_type in {"list", "list_item"}:
@@ -177,6 +183,101 @@ class MinerUAdapter:
         if right <= left or bottom <= top:
             return None
         return left, top, right, bottom
+
+    @classmethod
+    def _heading_alignment(cls, item: dict[str, Any]) -> str:
+        """Infer semantic alignment from MinerU geometry, independent of text.
+
+        MinerU emits page-relative boxes on either a 0..1 or 0..1000 scale.
+        Keeping the provider-specific coordinate handling here prevents raw
+        geometry from leaking into LessonDocument or the frontend.
+        """
+
+        bbox = cls._bbox(item)
+        if bbox is None:
+            return "left"
+
+        left, _, right, _ = bbox
+        page_width = 1.0 if max(abs(left), abs(right)) <= 1.5 else 1000.0
+        block_center = (left + right) / 2
+        block_width = right - left
+        center_tolerance = max(
+            page_width * 0.025,
+            min(page_width * 0.08, block_width * 0.2),
+        )
+        if abs(block_center - page_width / 2) <= center_tolerance:
+            return "center"
+        if block_center >= page_width * 0.67:
+            return "right"
+        return "left"
+
+    @classmethod
+    def _restore_heading_spacing(
+        cls,
+        text: str,
+        item: dict[str, Any],
+        ocr_layout: Any,
+    ) -> str:
+        """Recover visually meaningful gaps between heading text runs.
+
+        MinerU's content list collapses run gaps to one ASCII space, while its
+        OCR layout retains each run's box.  Reconstruct spacing only when text
+        tokens and OCR boxes match unambiguously; otherwise preserve the text.
+        """
+
+        tokens = re.split(r"\s+", text.strip())
+        if len(tokens) < 2 or not isinstance(ocr_layout, list):
+            return text
+        try:
+            page_index = int(item.get("page_idx", 0))
+            page_boxes = ocr_layout[page_index]
+        except (TypeError, ValueError, IndexError):
+            return text
+        heading_box = cls._normalized_bbox(item)
+        if heading_box is None or not isinstance(page_boxes, list):
+            return text
+
+        left, top, right, bottom = heading_box
+        line_height = bottom - top
+        matching_boxes: list[tuple[float, float, float, float]] = []
+        for candidate in page_boxes:
+            if not isinstance(candidate, dict):
+                continue
+            box = cls._normalized_bbox(candidate)
+            if box is None:
+                continue
+            box_left, box_top, box_right, box_bottom = box
+            vertical_overlap = max(0.0, min(bottom, box_bottom) - max(top, box_top))
+            if (
+                vertical_overlap >= min(line_height, box_bottom - box_top) * 0.5
+                and box_right >= left - 0.01
+                and box_left <= right + 0.01
+            ):
+                matching_boxes.append(box)
+
+        matching_boxes.sort(key=lambda box: box[0])
+        if len(matching_boxes) != len(tokens):
+            return text
+
+        restored = [tokens[0]]
+        for index, token in enumerate(tokens[1:], start=1):
+            gap_ratio = max(0.0, matching_boxes[index][0] - matching_boxes[index - 1][2]) / line_height
+            if gap_ratio >= 0.75:
+                separator = "　" * min(6, max(1, round(gap_ratio)))
+            else:
+                separator = " "
+            restored.extend((separator, token))
+        return "".join(restored)
+
+    @classmethod
+    def _normalized_bbox(
+        cls, item: dict[str, Any]
+    ) -> tuple[float, float, float, float] | None:
+        bbox = cls._bbox(item)
+        if bbox is None:
+            return None
+        scale = 1.0 if max(abs(value) for value in bbox) <= 1.5 else 1000.0
+        return tuple(value / scale for value in bbox)
 
     @staticmethod
     def _positive_int(value: Any, default: int) -> int:

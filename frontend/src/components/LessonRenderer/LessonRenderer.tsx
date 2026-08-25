@@ -102,7 +102,14 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
       </header>
       <div className="document-rule" />
       <div className="document-blocks">
-        {document.blocks.map((block) => <div className="document-block" key={block.id}><BlockRenderer block={block} editable={editable} /></div>)}
+        {document.blocks.map((block) => (
+          <div
+            className={`document-block${block.type === 'heading' ? ` document-block-heading-${block.alignment}` : ''}`}
+            key={block.id}
+          >
+            <BlockRenderer block={block} editable={editable} />
+          </div>
+        ))}
       </div>
     </article>
   )

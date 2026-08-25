@@ -19,11 +19,12 @@ from latex2mathml.converter import convert as latex_to_mathml
 from mathml2omml import convert as mathml_to_omml
 
 from app.core.exceptions import AppError
+from app.services.docx_font_embedder import FONT_FAMILY, embed_default_fonts
 
 CONTENT_WIDTH_DXA = 9360
 TABLE_INDENT_DXA = 120
-CELL_MARGIN_DXA = {"top": 80, "bottom": 80, "start": 120, "end": 120}
-EAST_ASIA_FONT = "Songti SC"
+CELL_MARGIN_DXA = {"top": 120, "bottom": 120, "start": 140, "end": 140}
+EAST_ASIA_FONT = FONT_FAMILY
 
 
 class DocxExportService:
@@ -48,8 +49,8 @@ class DocxExportService:
 
         output = BytesIO()
         document.save(output)
-        output.seek(0)
-        return output, self._safe_filename(filename)
+        characters = "".join(element.text or "" for element in document.element.iter())
+        return embed_default_fonts(output, characters), self._safe_filename(filename)
 
     def _configure_document(self, document: DocumentObject) -> None:
         self._set_document_language(document, "zh-CN")
@@ -87,11 +88,20 @@ class DocxExportService:
         if run_properties is None:
             run_properties = OxmlElement("w:rPr")
             run_defaults.append(run_properties)
+        fonts = run_properties.find(qn("w:rFonts"))
+        if fonts is None:
+            fonts = OxmlElement("w:rFonts")
+            run_properties.insert(0, fonts)
+        for attribute in ("ascii", "hAnsi", "eastAsia", "cs"):
+            fonts.set(qn(f"w:{attribute}"), EAST_ASIA_FONT)
         language_element = run_properties.find(qn("w:lang"))
         if language_element is None:
             language_element = OxmlElement("w:lang")
             run_properties.append(language_element)
         language_element.set(qn("w:eastAsia"), language)
+        theme_language = document.settings.element.find(qn("w:themeFontLang"))
+        if theme_language is not None:
+            theme_language.set(qn("w:eastAsia"), language)
 
     @staticmethod
     def _set_style(
@@ -309,6 +319,8 @@ class DocxExportService:
                 cell = cell.merge(table.cell(end_row, end_col))
             cell.text = ""
             paragraph = cell.paragraphs[0]
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.2
             self._append_inline(paragraph, source_cell)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             self._set_cell_width(cell, sum(widths[column : end_col + 1]))

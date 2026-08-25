@@ -15,7 +15,7 @@ def test_lesson_document_uses_camel_case_contract() -> None:
                 "sourceFileName": "lesson.docx",
             },
             "blocks": [
-                {"id": "1", "type": "heading", "level": 1, "text": "教学目标"},
+                {"id": "1", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left"},
                 {"id": "2", "type": "formula", "latex": "a^2+b^2=c^2"},
             ],
         }

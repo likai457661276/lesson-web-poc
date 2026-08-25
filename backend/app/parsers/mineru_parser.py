@@ -38,7 +38,11 @@ class MinerUDocumentParser(DocumentParser):
 
         if not isinstance(content_list, list):
             raise MinerUError("MinerU content_list.json 格式无效")
-        return {"content_list": content_list, "result_dir": str(result_dir)}
+        return {
+            "content_list": content_list,
+            "ocr_layout": self._load_ocr_layout(result_dir),
+            "result_dir": str(result_dir),
+        }
 
     async def _create_upload(
         self, client: httpx.AsyncClient, file_name: str
@@ -124,6 +128,35 @@ class MinerUDocumentParser(DocumentParser):
         if not matches:
             raise MinerUError("MinerU 结果中缺少 content_list.json")
         return matches[0]
+
+    @staticmethod
+    def _load_ocr_layout(result_dir: Path) -> list[list[dict[str, Any]]]:
+        """Keep only lightweight OCR boxes needed for inline spacing recovery."""
+
+        matches = sorted(result_dir.rglob("*_model.json"))
+        if not matches:
+            return []
+        try:
+            model = json.loads(matches[0].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(model, list):
+            return []
+
+        pages: list[list[dict[str, Any]]] = []
+        for page in model:
+            if not isinstance(page, list):
+                pages.append([])
+                continue
+            boxes = []
+            for item in page:
+                if not isinstance(item, dict) or item.get("type") != "ocr_text":
+                    continue
+                bbox = item.get("bbox")
+                if isinstance(bbox, list) and len(bbox) == 4:
+                    boxes.append({"bbox": bbox})
+            pages.append(boxes)
+        return pages
 
     @staticmethod
     def _json_response(response: httpx.Response, context: str) -> dict[str, Any]:

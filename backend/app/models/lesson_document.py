@@ -12,6 +12,7 @@ class HeadingBlock(ApiModel):
     type: Literal["heading"]
     level: int = Field(ge=1, le=6)
     text: str
+    alignment: Literal["left", "center", "right"]
 
 
 class ParagraphBlock(ApiModel):

@@ -35,6 +35,7 @@ def test_adapter_maps_all_six_block_types() -> None:
     assert document.blocks[4].src == "/api/assets/job-1/a.png"
     assert '/api/assets/job-1/a.png' in document.blocks[3].html
     assert 'data-latex="-360^{\\circ} \\leq b"' in document.blocks[3].html
+    assert document.blocks[0].alignment == "left"
 
 
 def test_adapter_strips_heading_markup_and_normalizes_degrees() -> None:
@@ -53,6 +54,58 @@ def test_adapter_strips_heading_markup_and_normalizes_degrees() -> None:
 
     assert document.title == "第一课时"
     assert document.blocks[1].latex == r"30^{\circ}"
+
+
+def test_adapter_infers_heading_alignment_from_geometry_not_text() -> None:
+    raw = {
+        "content_list": [
+            {"type": "text", "text_level": 1, "text": "文档主标题", "bbox": [430, 80, 570, 112]},
+            {"type": "text", "text_level": 2, "text": "2.4 通用章节", "bbox": [390, 130, 610, 160]},
+            {"type": "text", "text_level": 2, "text": "左对齐小节", "bbox": [145, 175, 280, 200]},
+            {"type": "text", "text_level": 2, "text": "右侧标题", "bbox": [735, 220, 880, 245]},
+        ]
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-alignment", source_file_name="arbitrary.pdf")
+
+    assert [block.alignment for block in document.blocks] == ["center", "center", "left", "right"]
+
+
+def test_adapter_restores_heading_run_gaps_from_ocr_geometry() -> None:
+    raw = {
+        "content_list": [
+            {"type": "text", "text_level": 2, "text": "2.4 通用章节", "page_idx": 0, "bbox": [390, 130, 610, 160]},
+        ],
+        "ocr_layout": [[
+            {"bbox": [0.39, 0.13, 0.46, 0.16]},
+            {"bbox": [0.51, 0.13, 0.61, 0.16]},
+        ]],
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-spacing", source_file_name="arbitrary.pdf")
+
+    assert document.blocks[0].text == "2.4　　通用章节"
+
+
+def test_adapter_keeps_heading_text_when_ocr_runs_are_ambiguous() -> None:
+    raw = {
+        "content_list": [
+            {"type": "text", "text_level": 2, "text": "A regular heading", "page_idx": 0, "bbox": [100, 100, 400, 140]},
+        ],
+        "ocr_layout": [[{"bbox": [0.1, 0.1, 0.4, 0.14]}]],
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-spacing-fallback", source_file_name="arbitrary.pdf")
+
+    assert document.blocks[0].text == "A regular heading"
+
+
+def test_adapter_defaults_heading_alignment_when_geometry_is_missing() -> None:
+    raw = {"content_list": [{"type": "title", "text": "无版面信息标题"}]}
+
+    document = MinerUAdapter().convert(raw, document_id="job-no-layout", source_file_name="plain.pdf")
+
+    assert document.blocks[0].alignment == "left"
 
 
 def test_adapter_restores_text_rows_belonging_to_layout_table() -> None:
