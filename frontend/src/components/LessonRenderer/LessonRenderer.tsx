@@ -38,9 +38,8 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
         replacement.dataset.latex = formula.getAttribute('data-latex') ?? ''
         formula.replaceWith(replacement)
       })
-      clone.querySelectorAll('.document-edit-toolbar, .document-title > span, .document-title > p, .document-rule, .formula-editor, .formula-edit-hint, .formula-validation-badge, button').forEach((node) => node.remove())
+      clone.querySelectorAll('.document-edit-toolbar, .document-title, .document-rule, .formula-editor, .formula-edit-hint, .formula-validation-badge, button').forEach((node) => node.remove())
       clone.querySelectorAll('[contenteditable]').forEach((node) => node.removeAttribute('contenteditable'))
-      clone.querySelector('.document-title h1')?.setAttribute('data-docx-title', 'true')
       await Promise.all(Array.from(clone.querySelectorAll('img')).map(async (image) => {
         if (image.src.startsWith('data:')) return
         try {
@@ -57,7 +56,7 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
           // The backend will keep the image alt text when an asset cannot be embedded.
         }
       }))
-      const exportedTitle = clone.querySelector('.document-title h1')?.textContent?.trim() || title || 'lesson'
+      const exportedTitle = title || 'lesson'
       const safeTitle = exportedTitle.replace(/[<>:"/\\|?*]/g, '_')
       const filename = `${safeTitle}.docx`
       const blob = await exportHtmlToDocx(clone.outerHTML, filename)

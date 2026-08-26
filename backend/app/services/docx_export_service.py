@@ -69,6 +69,23 @@ class DocxExportService:
         title_style = document.styles.add_style("HTML Title", WD_STYLE_TYPE.PARAGRAPH)
         title_style.base_style = document.styles["Normal"]
         self._set_style(document, "HTML Title", size=24, color="0B2545", before=0, after=12, line=1.0, bold=True)
+        for level, size, bold, before, after in (
+            (1, 14, True, 0, 10),
+            (2, 14, False, 0, 10),
+            (3, 12, True, 8, 4),
+        ):
+            style = document.styles.add_style(f"Lesson Heading {level}", WD_STYLE_TYPE.PARAGRAPH)
+            style.base_style = document.styles["Normal"]
+            self._set_style(
+                document,
+                f"Lesson Heading {level}",
+                size=size,
+                color="000000",
+                before=before,
+                after=after,
+                line=1.0,
+                bold=bold,
+            )
         self._set_style(document, "Heading 1", size=16, color="2E74B5", before=16, after=8, line=1.0, bold=True)
         self._set_style(document, "Heading 2", size=13, color="2E74B5", before=12, after=6, line=1.0, bold=True)
         self._set_style(document, "Heading 3", size=12, color="1F4D78", before=8, after=4, line=1.0, bold=True)
@@ -139,12 +156,30 @@ class DocxExportService:
             return
 
         name = node.name.lower()
+        classes = set(node.get("class") or [])
+        if "document-title" in classes:
+            return
         if name in {"script", "style", "noscript", "iframe", "object", "embed", "button", "input", "textarea"}:
             return
         if name in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             level = int(name[1])
-            is_title = node.has_attr("data-docx-title") or (level == 1 and not state["has_content"])
-            paragraph = document.add_paragraph(style="HTML Title" if is_title else f"Heading {min(level, 3)}")
+            is_lesson_heading = "lesson-heading" in classes
+            is_title = node.has_attr("data-docx-title") or (
+                level == 1 and not state["has_content"] and not is_lesson_heading
+            )
+            if is_title:
+                style_name = "HTML Title"
+            elif is_lesson_heading:
+                style_name = f"Lesson Heading {min(level, 3)}"
+            else:
+                style_name = f"Heading {min(level, 3)}"
+            paragraph = document.add_paragraph(style=style_name)
+            if "lesson-heading-center" in classes:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif "lesson-heading-right" in classes:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            elif "lesson-heading-left" in classes:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
             self._append_inline(paragraph, node)
             state["has_content"] = True
             return

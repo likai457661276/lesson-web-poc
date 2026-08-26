@@ -3,6 +3,7 @@ from io import BytesIO
 from zipfile import ZipFile
 
 from docx import Document
+from docx.shared import RGBColor
 from fastapi.testclient import TestClient
 from fontTools.ttLib import TTFont
 from lxml import etree
@@ -171,3 +172,41 @@ def test_export_docx_distributes_colspan_content_across_merged_columns() -> None
     widths = [int(column.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}w")) for column in grid]
     assert widths[2] > widths[0]
     assert widths[3] > widths[1]
+
+
+def test_export_docx_preserves_lesson_heading_layout_and_skips_preview_title() -> None:
+    response = client.post(
+        "/api/documents/export-docx",
+        json={
+            "filename": "lesson-title-layout.docx",
+            "html": """
+                <article>
+                  <header class="document-title"><h1>预览元数据标题</h1></header>
+                  <div class="document-block document-block-heading-center">
+                    <h1 class="lesson-heading lesson-heading-1 lesson-heading-center">第一课时</h1>
+                  </div>
+                  <div class="document-block document-block-heading-center">
+                    <h2 class="lesson-heading lesson-heading-2 lesson-heading-center">5.1.1　　任意角</h2>
+                  </div>
+                  <table class="lesson-layout-table"><tr><td>一、内容</td></tr></table>
+                </article>
+            """,
+        },
+    )
+
+    assert response.status_code == 200
+    document = Document(BytesIO(response.content))
+    assert [paragraph.text for paragraph in document.paragraphs] == [
+        "第一课时",
+        "5.1.1　　任意角",
+    ]
+    assert [paragraph.style.name for paragraph in document.paragraphs] == [
+        "Lesson Heading 1",
+        "Lesson Heading 2",
+    ]
+    assert all(
+        paragraph.alignment == 1
+        for paragraph in document.paragraphs
+    )
+    assert document.paragraphs[0].style.font.color.rgb == RGBColor(0, 0, 0)
+    assert document.paragraphs[1].style.font.color.rgb == RGBColor(0, 0, 0)

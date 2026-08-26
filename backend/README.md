@@ -59,6 +59,6 @@ docker compose up --build app
 }
 ```
 
-接口返回可直接下载的 DOCX。支持常见标题、段落、行内强调、列表、表格、公式 LaTeX 文本和 data URL 图片；脚本及嵌入对象会被忽略，远程图片不会由后端主动抓取。
+接口返回可直接下载的 DOCX。支持常见标题、源文档标题对齐与有效空白、段落、行内强调、列表、表格、公式 LaTeX 文本和 data URL 图片；脚本及嵌入对象会被忽略，远程图片不会由后端主动抓取。
 
 导出文件默认使用并嵌入 Noto Sans SC Regular/Bold 字体子集，不依赖接收方电脑预装中文字体。字体源文件采用 SIL Open Font License 1.1，许可证与来源说明位于 `app/assets/fonts/`。
