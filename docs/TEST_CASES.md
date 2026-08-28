@@ -4,15 +4,10 @@
 
 | # | 样本 | 目录 | 验收重点 | 结果 |
 | --- | --- | --- | --- | --- |
-| 1 | 纯文字 Word | `samples/docx/` | 阅读顺序、标题 | 待测 |
-| 2 | Word + 普通表格 | `samples/docx/` | 行列、合并单元格 | 待测 |
-| 3 | Word + 图片 | `samples/docx/` | 图片位置、清晰度 | 待测 |
-| 4 | Word + 表格内图片 | `samples/docx/` | 表格与资源关系 | 待测 |
-| 5 | Word + 数学公式 | `samples/docx/` | LaTeX、KaTeX 渲染 | 待测 |
-| 6 | 电子 PDF | `samples/pdf/` | 文本、标题 | 待测 |
-| 7 | PDF + 表格 | `samples/pdf/` | HTML 表格结构 | 待测 |
-| 8 | 扫描 PDF | `samples/pdf/` | OCR、阅读顺序 | 待测 |
-| 9 | 手机拍照 | `samples/images/` | OCR、旋转与裁切 | 待测 |
-| 10 | 复杂综合教案 | 对应目录 | 六类 Block 完整性 | 待测 |
+| 1 | 电子 PDF | `samples/pdf/` | 文本、标题 | 待测 |
+| 2 | PDF + 表格 | `samples/pdf/` | HTML 表格结构 | 待测 |
+| 3 | 扫描 PDF | `samples/pdf/` | OCR、阅读顺序 | 待测 |
+| 4 | 手机拍照 | `samples/images/` | OCR、旋转与裁切 | 待测 |
+| 5 | 复杂综合教案 | 对应目录 | 六类 Block 完整性 | 待测 |
 
 每个样本记录解析耗时、Block 数量、图片/表格/公式数量，以及明显缺失或顺序错误。端到端测试需要有效的 `MINERU_API_KEY`，不得把密钥或包含敏感内容的真实教案提交到仓库。

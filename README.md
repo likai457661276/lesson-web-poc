@@ -1,6 +1,6 @@
 # Lesson Web PoC
 
-把 Word、PDF、PPT、Excel 或图片类教案交给 MinerU 解析，转换成稳定的 `LessonDocument v1`，再由 React 前端逐块渲染为 Web 教案。
+把 PDF、PPT、Excel 或图片类教案交给 MinerU 解析，转换成稳定的 `LessonDocument v1`，再由 React 前端逐块渲染为 Web 教案。
 
 ## 目录
 

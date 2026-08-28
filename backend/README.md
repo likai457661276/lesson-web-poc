@@ -15,6 +15,7 @@ cp .env.example .env
 - `MINERU_MODEL_VERSION=vlm`
 - `MINERU_TIMEOUT_SECONDS=600`
 - `MAX_FILE_SIZE_MB=200`
+- `ALLOWED_EXTENSIONS=.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx`
 - `DATA_DIR=../data/jobs`
 
 ## 本地运行

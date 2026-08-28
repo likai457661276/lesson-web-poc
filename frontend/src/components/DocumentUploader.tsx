@@ -9,7 +9,7 @@ interface Props {
   onSubmit: () => void
 }
 
-const ACCEPT = '.doc,.docx,.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx'
+const ACCEPT = '.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx'
 
 export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -21,7 +21,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
       <div className="section-heading-row">
         <div>
           <h2 id="upload-heading">上传教案</h2>
-          <p>支持 Word、PDF、PPT、Excel 与常见图片，单文件最大 200 MB。</p>
+          <p>支持 PDF、PPT、Excel 与常见图片，单文件最大 200 MB。</p>
         </div>
         <span className="format-note">MinerU · VLM</span>
       </div>

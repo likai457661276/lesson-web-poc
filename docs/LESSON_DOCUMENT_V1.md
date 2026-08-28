@@ -40,8 +40,8 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
   "documentId": "job-001",
   "title": "勾股定理教学设计",
   "metadata": {
-    "sourceType": "docx",
-    "sourceFileName": "勾股定理教学设计.docx"
+    "sourceType": "pdf",
+    "sourceFileName": "勾股定理教学设计.pdf"
   },
   "blocks": [
     { "id": "block-0001", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left" },

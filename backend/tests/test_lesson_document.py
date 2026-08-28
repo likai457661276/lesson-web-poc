@@ -11,8 +11,8 @@ def test_lesson_document_uses_camel_case_contract() -> None:
             "documentId": "lesson-1",
             "title": "勾股定理",
             "metadata": {
-                "sourceType": "docx",
-                "sourceFileName": "lesson.docx",
+                "sourceType": "pdf",
+                "sourceFileName": "lesson.pdf",
             },
             "blocks": [
                 {"id": "1", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left"},
@@ -23,7 +23,7 @@ def test_lesson_document_uses_camel_case_contract() -> None:
 
     payload = document.model_dump(by_alias=True)
     assert payload["documentId"] == "lesson-1"
-    assert payload["metadata"]["sourceFileName"] == "lesson.docx"
+    assert payload["metadata"]["sourceFileName"] == "lesson.pdf"
 
 
 def test_unknown_block_type_is_rejected() -> None:

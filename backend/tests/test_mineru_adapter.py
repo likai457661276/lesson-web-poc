@@ -19,7 +19,7 @@ def test_adapter_maps_all_six_block_types() -> None:
     document = MinerUAdapter().convert(
         raw,
         document_id="job-1",
-        source_file_name="lesson.docx",
+        source_file_name="lesson.pdf",
         asset_urls={"images/a.png": "/api/assets/job-1/a.png"},
     )
 
