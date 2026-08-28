@@ -3,7 +3,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
 
 from app.models.lesson_document import (
     FormulaBlock,
@@ -32,12 +32,7 @@ class MinerUAdapter:
         title = Path(source_file_name).stem
         ocr_layout = mineru_result.get("ocr_layout", [])
 
-        content_list = self._restore_page_tables(
-            mineru_result.get("content_list", []),
-            mineru_result.get("page_tables", []),
-        )
-        content_list = self._mark_suspicious_multicolumn_text(content_list)
-        content_list = self._merge_layout_table_prefixes(content_list)
+        content_list = self._merge_layout_table_prefixes(mineru_result.get("content_list", []))
         for index, item in enumerate(content_list, start=1):
             block = self._convert_item(item, index, asset_urls, ocr_layout)
             if block is None:
@@ -46,16 +41,12 @@ class MinerUAdapter:
             if isinstance(block, HeadingBlock) and block.level == 1 and title == Path(source_file_name).stem:
                 title = block.text
 
-        if title == Path(source_file_name).stem:
-            title = self._title_from_first_table(blocks) or title
-
         return LessonDocument(
             document_id=document_id,
             title=title,
             metadata=LessonMetadata(
                 source_type=Path(source_file_name).suffix.lstrip(".").lower(),
                 source_file_name=source_file_name,
-                source_url=f"/api/documents/{document_id}/source",
             ),
             blocks=blocks,
         )
@@ -70,7 +61,6 @@ class MinerUAdapter:
         item_type = str(item.get("type", "")).lower()
         block_id = f"block-{index:04d}"
         text = self._text(item)
-        context = self._block_context(item)
 
         if item_type in {"title", "heading"} or item.get("text_level"):
             if not text:
@@ -82,7 +72,6 @@ class MinerUAdapter:
                 level=min(max(level, 1), 6),
                 text=self._restore_heading_spacing(self._plain_text(text), item, ocr_layout),
                 alignment=self._heading_alignment(item),
-                **context,
             )
 
         if item_type in {"list", "list_item"}:
@@ -96,227 +85,33 @@ class MinerUAdapter:
                 type="list",
                 items=normalized,
                 ordered=bool(item.get("ordered") or item.get("list_type") == "ordered"),
-                **context,
             ) if normalized else None
 
         if item_type == "table":
-            table_html = str(item.get("table_body") or item.get("html") or "").strip()
-            table_html = self._rewrite_table_assets(table_html, asset_urls)
-            table_html = self._rewrite_table_formulas(table_html)
-            table_html = self._rewrite_plain_text_formulas(table_html)
-            table_html = self._enhance_table_structure(table_html)
-            return TableBlock(id=block_id, type="table", html=table_html, **context) if table_html else None
+            html = str(item.get("table_body") or item.get("html") or "").strip()
+            html = self._rewrite_table_assets(html, asset_urls)
+            html = self._rewrite_table_formulas(html)
+            return TableBlock(id=block_id, type="table", html=html) if html else None
 
         if item_type == "image":
-            if self._is_decorative_image(item):
-                return None
             raw_path = str(item.get("img_path") or item.get("image_path") or item.get("src") or "")
             src = self._asset_url(raw_path, asset_urls)
             captions = item.get("image_caption") or item.get("caption") or []
             alt = " ".join(captions) if isinstance(captions, list) else str(captions)
-            return ImageBlock(id=block_id, type="image", src=src, alt=alt or None, **context) if src else None
+            return ImageBlock(id=block_id, type="image", src=src, alt=alt or None) if src else None
 
         if item_type in {"equation", "formula", "interline_equation", "inline_equation"}:
             latex = self._normalize_latex(str(item.get("latex") or text))
-            return FormulaBlock(id=block_id, type="formula", latex=latex, **context) if latex else None
+            return FormulaBlock(id=block_id, type="formula", latex=latex) if latex else None
 
         if item_type in {"text", "paragraph", ""} and text:
             list_lines = [line.strip() for line in text.splitlines() if line.strip()]
             if len(list_lines) > 1 and all(re.match(r"^(?:[-*•]|\d+[.)])\s+", line) for line in list_lines):
                 ordered = all(re.match(r"^\d+[.)]\s+", line) for line in list_lines)
                 items = [re.sub(r"^(?:[-*•]|\d+[.)])\s+", "", line) for line in list_lines]
-                return ListBlock(id=block_id, type="list", items=items, ordered=ordered, **context)
-            return ParagraphBlock(id=block_id, type="paragraph", text=text, **context)
+                return ListBlock(id=block_id, type="list", items=items, ordered=ordered)
+            return ParagraphBlock(id=block_id, type="paragraph", text=text)
         return None
-
-    @classmethod
-    def _restore_page_tables(cls, raw_items: Any, page_tables: Any) -> list[dict[str, Any]]:
-        """Replace merged table HTML with the model's page-local fragments."""
-
-        if not isinstance(raw_items, list):
-            return []
-        items = [dict(item) for item in raw_items if isinstance(item, dict)]
-        if not isinstance(page_tables, list):
-            return items
-
-        candidates: dict[int, list[dict[str, Any]]] = {
-            page_index: [dict(item) for item in page if isinstance(item, dict)]
-            for page_index, page in enumerate(page_tables)
-            if isinstance(page, list)
-        }
-        used: set[tuple[int, int]] = set()
-        for item in items:
-            if str(item.get("type", "")).lower() != "table":
-                continue
-            try:
-                page_index = int(item.get("page_idx"))
-            except (TypeError, ValueError):
-                continue
-            item_box = cls._normalized_bbox(item)
-            best_index: int | None = None
-            best_score = -1.0
-            for candidate_index, candidate in enumerate(candidates.get(page_index, [])):
-                if (page_index, candidate_index) in used:
-                    continue
-                candidate_box = cls._normalized_bbox(candidate)
-                score = cls._bbox_overlap_score(item_box, candidate_box)
-                if score > best_score:
-                    best_index = candidate_index
-                    best_score = score
-            if best_index is None or best_score < 0.15:
-                continue
-            candidate = candidates[page_index][best_index]
-            page_html = str(candidate.get("table_body") or "").strip()
-            if page_html:
-                item["table_body"] = page_html
-                item.pop("html", None)
-                used.add((page_index, best_index))
-        return items
-
-    @staticmethod
-    def _bbox_overlap_score(
-        first: tuple[float, float, float, float] | None,
-        second: tuple[float, float, float, float] | None,
-    ) -> float:
-        if first is None or second is None:
-            return -1.0
-        left = max(first[0], second[0])
-        top = max(first[1], second[1])
-        right = min(first[2], second[2])
-        bottom = min(first[3], second[3])
-        intersection = max(0.0, right - left) * max(0.0, bottom - top)
-        first_area = (first[2] - first[0]) * (first[3] - first[1])
-        second_area = (second[2] - second[0]) * (second[3] - second[1])
-        return intersection / max(first_area, second_area, 1e-9)
-
-    @classmethod
-    def _mark_suspicious_multicolumn_text(cls, raw_items: Any) -> list[dict[str, Any]]:
-        """Flag provider text whose geometry crosses visual columns.
-
-        Once OCR has interleaved two columns inside one string there is no safe,
-        provider-independent way to invent the original order. The adapter fixes
-        duplicated suffixes when they are provable and otherwise exposes an
-        explicit review state instead of silently presenting corrupted text.
-        """
-
-        if not isinstance(raw_items, list):
-            return []
-        items = [dict(item) for item in raw_items if isinstance(item, dict)]
-        by_page: dict[int, list[dict[str, Any]]] = {}
-        for item in items:
-            try:
-                page_index = int(item.get("page_idx"))
-            except (TypeError, ValueError):
-                continue
-            by_page.setdefault(page_index, []).append(item)
-
-        for page_items in by_page.values():
-            text_items = [
-                item for item in page_items
-                if str(item.get("type", "")).lower() in {"text", "paragraph", ""}
-                and cls._text(item)
-                and cls._normalized_bbox(item) is not None
-            ]
-            right_items = [
-                item for item in text_items
-                if (box := cls._normalized_bbox(item)) is not None and box[0] >= 0.68
-            ]
-            left_items = [
-                item for item in text_items
-                if (box := cls._normalized_bbox(item)) is not None and box[0] <= 0.18
-            ]
-            has_columns = bool(right_items) and len(left_items) >= 2
-            for item in text_items:
-                box = cls._normalized_bbox(item)
-                if box is None:
-                    continue
-                width = box[2] - box[0]
-                height = box[3] - box[1]
-                crosses_column = has_columns and any(
-                    (right_box := cls._normalized_bbox(right_item)) is not None
-                    and box[0] < 0.6
-                    and box[2] > right_box[0] + 0.08
-                    and min(box[3], right_box[3]) > max(box[1], right_box[1])
-                    for right_item in right_items
-                )
-                suspicious = crosses_column or (width >= 0.55 and height >= 0.12) or width >= 0.75
-                if not suspicious:
-                    continue
-                original = cls._text(item)
-                corrected = cls._remove_provable_duplicate_suffix(original, item, right_items)
-                if corrected != original:
-                    item["text"] = corrected
-                item["review_required"] = True
-                item["review_reason"] = "该文本块横跨多个版面列，阅读顺序需结合原页复核。"
-        return items
-
-    @classmethod
-    def _remove_provable_duplicate_suffix(
-        cls,
-        text: str,
-        item: dict[str, Any],
-        right_items: list[dict[str, Any]],
-    ) -> str:
-        item_box = cls._normalized_bbox(item)
-        if item_box is None:
-            return text
-        for candidate in right_items:
-            if candidate is item:
-                continue
-            candidate_box = cls._normalized_bbox(candidate)
-            candidate_text = cls._text(candidate)
-            if candidate_box is None or candidate_box[0] - item_box[0] < 0.4:
-                continue
-            max_length = min(24, len(text), len(candidate_text))
-            for length in range(max_length, 3, -1):
-                suffix = text[-length:]
-                if candidate_text.endswith(suffix):
-                    return text[:-length].rstrip()
-        return text
-
-    @staticmethod
-    def _block_context(item: dict[str, Any]) -> dict[str, Any]:
-        try:
-            source_page = int(item.get("page_idx")) + 1
-        except (TypeError, ValueError):
-            source_page = None
-        return {
-            "source_page": source_page,
-            "group_id": f"page-{source_page}" if source_page is not None else None,
-            "review_required": bool(item.get("review_required")),
-            "review_reason": str(item.get("review_reason") or "") or None,
-        }
-
-    @classmethod
-    def _is_decorative_image(cls, item: dict[str, Any]) -> bool:
-        bbox = cls._normalized_bbox(item)
-        captions = item.get("image_caption") or item.get("caption") or []
-        has_caption = bool(captions)
-        if bbox is None or not has_caption:
-            return False
-        width = bbox[2] - bbox[0]
-        height = bbox[3] - bbox[1]
-        is_tiny_standalone_asset = width <= 0.08 and height <= 0.08
-        is_small_header_asset = bbox[1] <= 0.22 and width <= 0.14 and height <= 0.12
-        return is_tiny_standalone_asset or is_small_header_asset
-
-    @staticmethod
-    def _title_from_first_table(blocks: list[LessonBlock]) -> str | None:
-        table_block = next((block for block in blocks if isinstance(block, TableBlock)), None)
-        if table_block is None:
-            return None
-        soup = BeautifulSoup(table_block.html, "html.parser")
-        first_row = soup.find("tr")
-        if not isinstance(first_row, Tag):
-            return None
-        cells = first_row.find_all(["td", "th"], recursive=False)
-        if len(cells) != 1:
-            return None
-        value = cells[0].get_text(" ", strip=True)
-        if not value or len(value) > 120:
-            return None
-        match = re.fullmatch(r"[^:：]{1,16}[:：]\s*(.+)", value)
-        return match.group(1).strip() if match else value
 
     @classmethod
     def _merge_layout_table_prefixes(cls, raw_items: Any) -> list[dict[str, Any]]:
@@ -591,96 +386,3 @@ class MinerUAdapter:
             )
 
         return pattern.sub(replace_formula, table_html)
-
-    @classmethod
-    def _rewrite_plain_text_formulas(cls, table_html: str) -> str:
-        """Recover compact equations that MinerU left as plain table text."""
-
-        soup = BeautifulSoup(table_html, "html.parser")
-        pattern = re.compile(
-            r"(?<![\w.])"
-            r"(?P<expr>(?:[A-Za-z]|\d+(?:\.\d+)?)"
-            r"(?:\s*(?:/|:|=|×|÷|\+|-)\s*(?:[A-Za-z]|\d+(?:\.\d+)?)){2,})"
-            r"(?![\w.])"
-        )
-
-        for text_node in list(soup.find_all(string=True)):
-            parent = text_node.parent
-            if not isinstance(parent, Tag) or parent.find_parent(attrs={"data-latex": True}):
-                continue
-            if parent.name in {"script", "style"}:
-                continue
-            value = str(text_node)
-            if not pattern.search(value):
-                continue
-
-            cursor = 0
-            replacements: list[Tag | NavigableString] = []
-            for match in pattern.finditer(value):
-                expression = match.group("expr")
-                if not any(operator in expression for operator in ("=", ":", "/", "×", "÷")):
-                    continue
-                if match.start() > cursor:
-                    replacements.append(NavigableString(value[cursor:match.start()]))
-                latex = cls._normalize_plain_math(expression)
-                span = soup.new_tag("span")
-                span["class"] = "lesson-inline-formula"
-                span["data-latex"] = latex
-                span["role"] = "button"
-                span["tabindex"] = "0"
-                replacements.append(span)
-                cursor = match.end()
-            if not replacements:
-                continue
-            if cursor < len(value):
-                replacements.append(NavigableString(value[cursor:]))
-            for replacement in replacements:
-                text_node.insert_before(replacement)
-            text_node.extract()
-        return str(soup)
-
-    @staticmethod
-    def _normalize_plain_math(value: str) -> str:
-        normalized = value.strip().replace("×", r"\times ").replace("÷", r"\div ")
-        return re.sub(
-            r"(?<![A-Za-z0-9.])([A-Za-z0-9.]+)/([A-Za-z0-9.]+)",
-            r"\\frac{\1}{\2}",
-            normalized,
-        )
-
-    @staticmethod
-    def _enhance_table_structure(table_html: str) -> str:
-        soup = BeautifulSoup(table_html, "html.parser")
-        table = soup.find("table")
-        if not isinstance(table, Tag):
-            return ""
-        classes = list(table.get("class") or [])
-        if "lesson-source-table" not in classes:
-            classes.append("lesson-source-table")
-        table["class"] = classes
-        rows = table.find_all("tr")
-        column_count = max(
-            (
-                sum(
-                    MinerUAdapter._positive_int(cell.get("colspan"), 1)
-                    for cell in row.find_all(["th", "td"], recursive=False)
-                )
-                for row in rows
-            ),
-            default=1,
-        )
-        table["data-column-count"] = str(column_count)
-
-        boundary = re.compile(
-            r"(?<=[。！？；：）)】])"
-            r"(?=(?:[一二三四五六七八九十]+、|\d+[.、](?!\d)))"
-        )
-        for text_node in list(table.find_all(string=True)):
-            parent = text_node.parent
-            if not isinstance(parent, Tag) or parent.find_parent(attrs={"data-latex": True}):
-                continue
-            value = str(text_node)
-            enhanced = boundary.sub("\n", value)
-            if enhanced != value:
-                text_node.replace_with(NavigableString(enhanced))
-        return str(soup)

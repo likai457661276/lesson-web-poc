@@ -67,8 +67,8 @@ export function EditableFormula({ latex: initialLatex, displayMode = false }: Ed
       </button>
 
       {validation && !editing && (
-        <span className={`formula-validation-badge ${validation.parseable ? 'is-valid' : validation.renderable ? 'is-renderable' : 'needs-review'}`}>
-          {validation.parseable ? 'SymPy 已校验' : validation.renderable ? '结构可渲染' : '需人工复核'}
+        <span className={`formula-validation-badge ${validation.parseable ? 'is-valid' : 'needs-review'}`}>
+          {validation.parseable ? 'SymPy 已校验' : '需人工复核'}
         </span>
       )}
 

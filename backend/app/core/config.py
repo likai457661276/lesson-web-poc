@@ -15,7 +15,6 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("../data/jobs")
     max_file_size_mb: int = 200
-    # Keep in sync with frontend DocumentUploader ACCEPT / MAX_FILE_SIZE_MB.
     allowed_extensions: str = ".doc,.docx,.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx"
 
     mineru_api_key: str = Field(default="", repr=False)

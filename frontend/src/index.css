@@ -68,7 +68,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .primary-button { width: 100%; margin-top: 12px; height: 48px; border: 0; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; gap: 9px; font-weight: 600; transition: background .2s, transform .2s; }
 .primary-button:hover:not(:disabled) { background: var(--accent-dark); transform: translateY(-1px); }
 .primary-button:disabled { cursor: not-allowed; opacity: .55; }
-.upload-error { margin: 10px 0 0; color: #a23e3e; font-size: 12px; }
 .spin { animation: spin 1s linear infinite; }
 
 .job-status { display: flex; gap: 12px; margin-top: 16px; border-left: 2px solid #c9a73c; padding: 10px 12px; background: #fffaf0; }
@@ -103,12 +102,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .document-title h1 { font-family: ui-serif, 'Songti SC', STSong, serif; font-size: clamp(30px, 5vw, 50px); line-height: 1.25; letter-spacing: -.04em; margin: 18px 0 12px; }
 .document-title p { color: var(--muted); margin: 0; font-size: 12px; }
 .document-rule { height: 1px; margin: 32px 0 42px; background: #d8d5cb; }
-.lesson-source-page { margin: 0 0 46px; padding: 0 0 38px; border-bottom: 1px solid #d9ddd6; }
-.lesson-source-page:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
-.source-page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 20px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
-.source-page-header a { color: var(--accent-dark); text-underline-offset: 3px; }
-.block-review-note { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; padding: 10px 12px; border-left: 2px solid #bc8b27; color: #6d571f; background: #fff7df; font-size: 11px; line-height: 1.55; }
-.block-review-note strong { flex: none; }
 .document-block { animation: rise .45s ease both; }
 .document-block:nth-child(2) { animation-delay: .04s; }
 .document-block:nth-child(3) { animation-delay: .08s; }
@@ -127,10 +120,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .lesson-paragraph { margin: 0 0 18px; white-space: pre-wrap; }
 .lesson-list { margin: 10px 0 24px; padding-left: 24px; }
 .lesson-list li { padding-left: 6px; margin: 5px 0; }
-.lesson-table { overflow-x: auto; margin: 28px 0; scrollbar-color: #8aa59b transparent; }
-.table-scroll-hint { display: none; color: var(--muted); font-size: 10px; margin-bottom: 8px; }
+.lesson-table { overflow-x: auto; margin: 28px 0; }
 .lesson-table table { width: 100%; border-collapse: collapse; font-family: ui-serif, 'Songti SC', STSong, serif; font-size: 14px; line-height: 1.65; }
-.lesson-table th, .lesson-table td { border: 1px solid #7d827f; padding: 7px 9px; text-align: left; vertical-align: middle; white-space: pre-wrap; }
+.lesson-table th, .lesson-table td { border: 1px solid #7d827f; padding: 7px 9px; text-align: left; vertical-align: middle; }
 .lesson-table th { background: #edf2ed; color: #24312d; }
 .lesson-table .lesson-layout-table { border: 1px solid #343735; }
 .lesson-table .lesson-layout-table th, .lesson-table .lesson-layout-table td { border-color: #4b4e4c; background: transparent; }
@@ -152,7 +144,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .editable-formula:hover .formula-edit-hint, .editable-formula:focus-visible .formula-edit-hint { opacity: 1; }
 .formula-validation-badge { color: #705a1c; background: #fff5cf; border-radius: 99px; padding: 3px 7px; font-family: Inter, sans-serif; font-size: 9px; white-space: nowrap; }
 .formula-validation-badge.is-valid { color: #16684e; background: #def3e9; }
-.formula-validation-badge.is-renderable { color: #315d77; background: #e5f1f8; }
 .formula-editor { flex: 1 0 100%; min-width: min(360px, 100%); display: grid; gap: 9px; margin: 7px 0 10px; padding: 14px; border: 1px solid #b9cac3; border-radius: 7px; background: #fffef9; box-shadow: 0 12px 28px rgba(24, 35, 33, .12); font-family: Inter, 'PingFang SC', sans-serif; position: relative; z-index: 2; }
 .formula-editor-heading { color: var(--ink); font-size: 12px; font-weight: 700; }
 .formula-editor textarea { width: 100%; resize: vertical; border: 1px solid #bdc8c2; border-radius: 4px; padding: 9px 10px; color: #24312d; background: white; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -189,8 +180,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
   .lesson-document { min-height: 700px; }
   .document-edit-toolbar { margin-top: -22px; align-items: flex-start; }
   .document-toolbar-actions { flex-direction: column-reverse; align-items: stretch; }
-  .lesson-table.is-wide table { min-width: 620px; }
-  .lesson-table.is-wide .table-scroll-hint { display: block; position: sticky; left: 0; width: max-content; }
 }
 
 @media (prefers-reduced-motion: reduce) {

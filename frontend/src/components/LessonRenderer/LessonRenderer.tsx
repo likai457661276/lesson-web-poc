@@ -9,12 +9,6 @@ import { ListBlock } from './ListBlock'
 import { ParagraphBlock } from './ParagraphBlock'
 import { TableBlock } from './TableBlock'
 
-function sourceHref(sourceUrl: string, sourceType: string, page?: number | null): string {
-  return sourceType.toLowerCase() === 'pdf' && page
-    ? `${sourceUrl}#page=${page}`
-    : sourceUrl
-}
-
 function BlockRenderer({ block, editable }: { block: LessonBlock; editable: boolean }) {
   switch (block.type) {
     case 'heading': return <HeadingBlock block={block} editable={editable} />
@@ -32,13 +26,6 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   const documentRef = useRef<HTMLElement>(null)
-  const pageGroups = document.blocks.reduce<Array<{ key: string; sourcePage?: number | null; blocks: LessonBlock[] }>>((groups, block) => {
-    const key = block.groupId ?? (block.sourcePage ? `page-${block.sourcePage}` : 'document')
-    const current = groups.at(-1)
-    if (current?.key === key) current.blocks.push(block)
-    else groups.push({ key, sourcePage: block.sourcePage, blocks: [block] })
-    return groups
-  }, [])
 
   const downloadDocx = async () => {
     if (!documentRef.current || exporting) return
@@ -51,7 +38,7 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
         replacement.dataset.latex = formula.getAttribute('data-latex') ?? ''
         formula.replaceWith(replacement)
       })
-      clone.querySelectorAll('.document-edit-toolbar, .document-title, .document-rule, .source-page-header, .block-review-note, .formula-editor, .formula-edit-hint, .formula-validation-badge, .table-scroll-hint, button').forEach((node) => node.remove())
+      clone.querySelectorAll('.document-edit-toolbar, .document-title, .document-rule, .formula-editor, .formula-edit-hint, .formula-validation-badge, button').forEach((node) => node.remove())
       clone.querySelectorAll('[contenteditable]').forEach((node) => node.removeAttribute('contenteditable'))
       await Promise.all(Array.from(clone.querySelectorAll('img')).map(async (image) => {
         if (image.src.startsWith('data:')) return
@@ -114,37 +101,13 @@ export function LessonRenderer({ document }: { document: LessonDocument }) {
       </header>
       <div className="document-rule" />
       <div className="document-blocks">
-        {pageGroups.map((group) => (
-          <section className="lesson-source-page" data-source-page={group.sourcePage ?? undefined} key={group.key}>
-            {group.sourcePage && (
-              <div className="source-page-header">
-                <span>源文档第 {group.sourcePage} 页</span>
-                {document.metadata.sourceUrl && (
-                  <a
-                    href={sourceHref(document.metadata.sourceUrl, document.metadata.sourceType, group.sourcePage)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {document.metadata.sourceType.toLowerCase() === 'pdf' ? '对照原页' : '打开源文件'}
-                  </a>
-                )}
-              </div>
-            )}
-            {group.blocks.map((block) => (
-              <div
-                className={`document-block${block.type === 'heading' ? ` document-block-heading-${block.alignment}` : ''}`}
-                key={block.id}
-              >
-                {block.reviewRequired && (
-                  <div className="block-review-note" role="note">
-                    <strong>版面识别需复核</strong>
-                    <span>{block.reviewReason ?? '请结合源文档确认阅读顺序。'}</span>
-                  </div>
-                )}
-                <BlockRenderer block={block} editable={editable} />
-              </div>
-            ))}
-          </section>
+        {document.blocks.map((block) => (
+          <div
+            className={`document-block${block.type === 'heading' ? ` document-block-heading-${block.alignment}` : ''}`}
+            key={block.id}
+          >
+            <BlockRenderer block={block} editable={editable} />
+          </div>
         ))}
       </div>
     </article>

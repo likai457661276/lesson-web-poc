@@ -52,11 +52,8 @@ pnpm dev
 
 ## API
 
-上传类型与 MinerU 精准解析 API 一致：`.doc`、`.docx`、`.pdf`、常见图片，以及 `.ppt`、`.pptx`、`.xls`、`.xlsx`。前端选择器和拖拽使用同一白名单，单文件最大 200 MB。
-
 - `POST /api/documents/parse`：上传文件并创建解析任务
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
-- `GET /api/documents/{jobId}/source`：查看任务对应的原始文件。PDF 可使用 `#page=N` 定位复核页；Word 等 Office 文件作为附件下载，不支持页锚点
 - `POST /api/formulas/validate`：使用 SymPy 校验 LaTeX 结构并返回规范化结果
 - `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
 - `GET /api/assets/{jobId}/{filename}`：读取提取图片

@@ -57,10 +57,3 @@ class LocalStorage:
         if not path.is_relative_to(assets_dir) or not path.is_file():
             raise AppError("ASSET_NOT_FOUND", "资源不存在", 404)
         return path
-
-    def resolve_source(self, job_id: str) -> Path:
-        job_dir = self.job_dir(job_id)
-        matches = sorted(job_dir.glob("source.*"))
-        if len(matches) != 1 or not matches[0].is_file():
-            raise AppError("SOURCE_NOT_FOUND", "源文件不存在", 404)
-        return matches[0]

@@ -15,7 +15,7 @@ def test_lesson_document_uses_camel_case_contract() -> None:
                 "sourceFileName": "lesson.docx",
             },
             "blocks": [
-                {"id": "1", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left", "sourcePage": 2, "groupId": "page-2"},
+                {"id": "1", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left"},
                 {"id": "2", "type": "formula", "latex": "a^2+b^2=c^2"},
             ],
         }
@@ -24,8 +24,6 @@ def test_lesson_document_uses_camel_case_contract() -> None:
     payload = document.model_dump(by_alias=True)
     assert payload["documentId"] == "lesson-1"
     assert payload["metadata"]["sourceFileName"] == "lesson.docx"
-    assert payload["blocks"][0]["sourcePage"] == 2
-    assert payload["blocks"][0]["groupId"] == "page-2"
 
 
 def test_unknown_block_type_is_rejected() -> None:
