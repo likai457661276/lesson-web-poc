@@ -104,3 +104,7 @@ class DocumentService:
         if job is None:
             raise AppError("JOB_NOT_FOUND", "解析任务不存在", 404)
         return job
+
+    def get_source(self, job_id: str) -> Path:
+        self.get_job(job_id)
+        return self.storage.resolve_source(job_id)

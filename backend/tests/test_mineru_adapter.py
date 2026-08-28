@@ -129,7 +129,8 @@ def test_adapter_restores_text_rows_belonging_to_layout_table() -> None:
 
     assert [block.type for block in document.blocks] == ["heading", "table"]
     table_html = document.blocks[1].html
-    assert 'class="lesson-layout-table"' in table_html
+    assert "lesson-layout-table" in table_html
+    assert 'data-column-count="4"' in table_html
     assert 'data-repeat-header="false"' in table_html
     assert table_html.index("一、内容") < table_html.index("任意角的概念") < table_html.index("核心问题")
     assert 'class="lesson-layout-cell lesson-layout-heading-cell"' in table_html
@@ -150,3 +151,79 @@ def test_adapter_does_not_merge_unaligned_paragraphs_into_regular_table() -> Non
     document = MinerUAdapter().convert(raw, document_id="job-regular", source_file_name="lesson.pdf")
 
     assert [block.type for block in document.blocks] == ["heading", "paragraph", "table"]
+
+
+def test_adapter_restores_page_local_tables_and_source_groups() -> None:
+    raw = {
+        "content_list": [
+            {"type": "table", "page_idx": 0, "bbox": [100, 100, 900, 900], "table_body": "<table><tr><td>跨页合并内容</td></tr></table>"},
+            {"type": "table", "page_idx": 1, "bbox": [100, 80, 900, 900], "table_body": ""},
+        ],
+        "page_tables": [
+            [{"type": "table", "page_idx": 0, "bbox": [0.1, 0.1, 0.9, 0.9], "table_body": "<table><tr><td>第一页</td></tr></table>"}],
+            [{"type": "table", "page_idx": 1, "bbox": [0.1, 0.08, 0.9, 0.9], "table_body": "<table><tr><td>第二页</td></tr></table>"}],
+        ],
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-pages", source_file_name="pages.pdf")
+
+    assert [block.source_page for block in document.blocks] == [1, 2]
+    assert [block.group_id for block in document.blocks] == ["page-1", "page-2"]
+    assert "第一页" in document.blocks[0].html
+    assert "第二页" in document.blocks[1].html
+    assert "跨页合并内容" not in document.blocks[0].html
+
+
+def test_adapter_flags_cross_column_text_and_removes_proven_duplicate_suffix() -> None:
+    raw = {
+        "content_list": [
+            {"type": "text", "page_idx": 0, "bbox": [50, 100, 600, 300], "text": "左栏的正常长段落。"},
+            {"type": "text", "page_idx": 0, "bbox": [730, 100, 900, 800], "text": "右栏完整说明以及重复结尾。"},
+            {"type": "text", "page_idx": 0, "bbox": [50, 760, 860, 810], "text": "左栏下一段误带重复结尾。"},
+        ]
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-columns", source_file_name="columns.pdf")
+
+    suspect = document.blocks[2]
+    assert suspect.review_required is True
+    assert suspect.text == "左栏下一段误带"
+
+
+def test_adapter_filters_small_captioned_header_image_but_keeps_teaching_image() -> None:
+    raw = {
+        "content_list": [
+            {"type": "image", "page_idx": 0, "bbox": [220, 90, 290, 150], "img_path": "images/logo.png", "image_caption": ["页眉标题"]},
+            {"type": "image", "page_idx": 1, "bbox": [216, 420, 285, 470], "img_path": "images/logo-continued.png", "image_caption": ["分区标题"]},
+            {"type": "image", "page_idx": 0, "bbox": [200, 300, 800, 700], "img_path": "images/diagram.png", "image_caption": ["教学示意图"]},
+        ]
+    }
+
+    document = MinerUAdapter().convert(
+        raw,
+        document_id="job-images",
+        source_file_name="images.pdf",
+        asset_urls={"logo.png": "/logo.png", "logo-continued.png": "/logo-continued.png", "diagram.png": "/diagram.png"},
+    )
+
+    assert len(document.blocks) == 1
+    assert document.blocks[0].src == "/diagram.png"
+
+
+def test_adapter_recovers_compact_plain_text_equations_in_tables() -> None:
+    raw = {
+        "content_list": [
+            {
+                "type": "table",
+                "page_idx": 0,
+                "table_body": "<table><tr><td>练习\n12:x=6:4 1/24:5/6=x:9</td><td>说明</td><td>结论</td></tr></table>",
+            }
+        ]
+    }
+
+    document = MinerUAdapter().convert(raw, document_id="job-math", source_file_name="math.pdf")
+    table_html = document.blocks[0].html
+
+    assert 'data-latex="12:x=6:4"' in table_html
+    assert 'data-latex="\\frac{1}{24}:\\frac{5}{6}=x:9"' in table_html
+    assert 'data-column-count="3"' in table_html

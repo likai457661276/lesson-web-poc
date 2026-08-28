@@ -15,6 +15,7 @@ cp .env.example .env
 - `MINERU_MODEL_VERSION=vlm`
 - `MINERU_TIMEOUT_SECONDS=600`
 - `MAX_FILE_SIZE_MB=200`
+- `ALLOWED_EXTENSIONS=.doc,.docx,.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx`（须与前端 `DocumentUploader` 白名单保持一致）
 - `DATA_DIR=../data/jobs`
 
 ## 本地运行
@@ -44,9 +45,9 @@ docker compose up --build app
 
 ## MinerU 调用流程
 
-服务使用 MinerU v4 精准解析接口：申请批量签名上传地址、PUT 上传、按 `batch_id` 轮询、下载结果 ZIP，并读取 `*_content_list.json`。Parser 保留供应商原始结构，Adapter 才负责生成 LessonDocument。
+上传类型与 MinerU 精准解析 API 一致，包括 `.doc` / `.docx`。服务使用 MinerU v4 精准解析接口：申请批量签名上传地址、PUT 上传、按 `batch_id` 轮询、下载结果 ZIP，并读取 `*_content_list.json` 与 `*_model.json` 中的逐页表格。Parser 保留供应商原始结构，Adapter 才负责生成 LessonDocument。源文件通过 `GET /api/documents/{jobId}/source` 提供：PDF 与图片以内联方式打开，Word 等 Office 文件作为附件下载。
 
-公式编辑可调用 `POST /api/formulas/validate`，使用 SymPy 检查 LaTeX 是否能转换为符号表达式。该检查不等价于 OCR 与原图一致性验证，最终仍需人工对照原页。
+公式编辑可调用 `POST /api/formulas/validate`。响应分别给出 KaTeX 结构是否可渲染、是否支持 SymPy 符号校验以及解析结果；展示型公式不再被误报为 OCR 错误。该检查不等价于 OCR 与原图一致性验证，最终仍需人工对照原页。
 
 ## DOCX 导出
 

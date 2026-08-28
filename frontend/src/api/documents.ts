@@ -4,6 +4,8 @@ export interface FormulaValidationResult {
   latex: string
   normalizedLatex: string
   parseable: boolean
+  renderable: boolean
+  symbolicSupported: boolean
   symbolicExpression?: string | null
   equivalentToReference?: boolean | null
   message: string

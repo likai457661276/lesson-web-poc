@@ -41,6 +41,7 @@ class MinerUDocumentParser(DocumentParser):
         return {
             "content_list": content_list,
             "ocr_layout": self._load_ocr_layout(result_dir),
+            "page_tables": self._load_page_tables(result_dir),
             "result_dir": str(result_dir),
         }
 
@@ -156,6 +157,46 @@ class MinerUDocumentParser(DocumentParser):
                 if isinstance(bbox, list) and len(bbox) == 4:
                     boxes.append({"bbox": bbox})
             pages.append(boxes)
+        return pages
+
+    @staticmethod
+    def _load_page_tables(result_dir: Path) -> list[list[dict[str, Any]]]:
+        """Load page-local table HTML before MinerU merges cross-page tables.
+
+        ``content_list.json`` intentionally merges table continuations and leaves
+        later page entries empty. The model file retains the HTML recognized on
+        each source page, which is the correct level for preserving page groups.
+        """
+
+        matches = sorted(result_dir.rglob("*_model.json"))
+        if not matches:
+            return []
+        try:
+            model = json.loads(matches[0].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(model, list):
+            return []
+
+        pages: list[list[dict[str, Any]]] = []
+        for page_index, page in enumerate(model):
+            tables: list[dict[str, Any]] = []
+            if isinstance(page, list):
+                for item in page:
+                    if not isinstance(item, dict) or item.get("type") != "table":
+                        continue
+                    content = item.get("content")
+                    bbox = item.get("bbox")
+                    if isinstance(content, str) and content.strip():
+                        tables.append(
+                            {
+                                "type": "table",
+                                "page_idx": page_index,
+                                "bbox": bbox,
+                                "table_body": content,
+                            }
+                        )
+            pages.append(tables)
         return pages
 
     @staticmethod

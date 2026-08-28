@@ -10,6 +10,8 @@ class FormulaValidationResult(BaseModel):
     latex: str
     normalized_latex: str = Field(alias="normalizedLatex")
     parseable: bool
+    renderable: bool
+    symbolic_supported: bool = Field(alias="symbolicSupported")
     symbolic_expression: str | None = Field(default=None, alias="symbolicExpression")
     equivalent_to_reference: bool | None = Field(default=None, alias="equivalentToReference")
     message: str

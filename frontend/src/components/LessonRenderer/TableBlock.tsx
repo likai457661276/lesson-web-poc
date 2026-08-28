@@ -28,6 +28,12 @@ export function TableBlock({ block, editable }: { block: Table; editable: boolea
     },
   }
   const content = parse(safeHtml, options)
+  const columnCount = Number(safeHtml.match(/data-column-count="(\d+)"/)?.[1] ?? 1)
 
-  return <div className="lesson-table">{content}</div>
+  return (
+    <div className={`lesson-table${columnCount >= 3 ? ' is-wide' : ''}`}>
+      {columnCount >= 3 && <span className="table-scroll-hint">横向滑动查看完整表格</span>}
+      {content}
+    </div>
+  )
 }

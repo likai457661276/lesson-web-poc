@@ -11,11 +11,16 @@
 | `title` | string | 文档标题 |
 | `metadata.sourceType` | string | 源文件扩展名 |
 | `metadata.sourceFileName` | string | 原始文件名 |
+| `metadata.sourceUrl` | string? | 可选的站内源文件查看地址。PDF 可追加 `#page=N` 定位复核页；Word 等其他类型直接打开源文件，不要附加页锚点 |
 | `blocks` | LessonBlock[] | 按阅读顺序排列的内容块 |
 
 ## 内容块
 
-所有内容块都包含 `id` 和作为判别字段的 `type`。
+所有内容块都包含 `id` 和作为判别字段的 `type`，并可携带以下通用来源上下文：
+
+- `sourcePage`：一基的源页码；缺少可靠页码时省略。
+- `groupId`：来源分组 ID。PDF 默认按源页分组，例如 `page-3`。
+- `reviewRequired` / `reviewReason`：Provider 版面结果存在跨栏串读等不确定性时的人工复核标记。该标记只表达风险，不伪造无法可靠恢复的阅读顺序。
 
 ```ts
 type HeadingBlock = { id: string; type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; text: string; alignment: 'left' | 'center' | 'right' }
@@ -41,12 +46,13 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
   "title": "勾股定理教学设计",
   "metadata": {
     "sourceType": "docx",
-    "sourceFileName": "勾股定理教学设计.docx"
+    "sourceFileName": "勾股定理教学设计.docx",
+    "sourceUrl": "/api/documents/job-001/source"
   },
   "blocks": [
-    { "id": "block-0001", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left" },
-    { "id": "block-0002", "type": "paragraph", "text": "理解勾股定理。" },
-    { "id": "block-0003", "type": "formula", "latex": "a^2+b^2=c^2" }
+    { "id": "block-0001", "type": "heading", "level": 1, "text": "教学目标", "alignment": "left", "sourcePage": 1, "groupId": "page-1" },
+    { "id": "block-0002", "type": "paragraph", "text": "理解勾股定理。", "sourcePage": 1, "groupId": "page-1" },
+    { "id": "block-0003", "type": "formula", "latex": "a^2+b^2=c^2", "sourcePage": 1, "groupId": "page-1" }
   ]
 }
 ```

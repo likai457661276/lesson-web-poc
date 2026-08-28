@@ -23,21 +23,36 @@ class FormulaService:
         self, latex: str, reference_latex: str | None = None
     ) -> FormulaValidationResult:
         normalized = self.normalize_latex(latex)
+        renderable = self._is_structurally_renderable(normalized)
+        if not renderable:
+            return FormulaValidationResult(
+                latex=latex,
+                normalized_latex=normalized,
+                parseable=False,
+                renderable=False,
+                symbolic_supported=False,
+                message="LaTeX 结构不完整，无法渲染；请结合原页修正。",
+            )
         try:
-            expressions = self._parse_expressions(normalized)
+            expressions = self._parse_expressions(self._normalize_for_symbolic(normalized))
         except Exception as exc:
             return FormulaValidationResult(
                 latex=latex,
                 normalized_latex=normalized,
                 parseable=False,
-                message=f"SymPy 无法解析该 LaTeX：{self._safe_error(exc)}",
+                renderable=True,
+                symbolic_supported=False,
+                message=(
+                    "LaTeX 结构可渲染，但此类展示公式暂不支持 SymPy 符号校验。"
+                    f" 原因：{self._safe_error(exc)}"
+                ),
             )
 
         equivalent: bool | None = None
         if reference_latex:
             try:
                 references = self._parse_expressions(
-                    self.normalize_latex(reference_latex)
+                    self._normalize_for_symbolic(self.normalize_latex(reference_latex))
                 )
                 if len(expressions) == len(references) == 1:
                     equivalent = bool(simplify(expressions[0] - references[0]) == 0)
@@ -48,10 +63,53 @@ class FormulaService:
             latex=latex,
             normalized_latex=normalized,
             parseable=True,
+            renderable=True,
+            symbolic_supported=True,
             symbolic_expression="; ".join(map(str, expressions)),
             equivalent_to_reference=equivalent,
             message="SymPy 解析通过；这表示公式结构有效，不代表 OCR 与原图完全一致。",
         )
+
+    @staticmethod
+    def _is_structurally_renderable(latex: str) -> bool:
+        depth = 0
+        escaped = False
+        for character in latex:
+            if escaped:
+                escaped = False
+                continue
+            if character == "\\":
+                escaped = True
+                continue
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth < 0:
+                    return False
+        return depth == 0 and not re.search(r"\\(?:frac|sqrt)\s*$", latex)
+
+    @staticmethod
+    def _normalize_for_symbolic(latex: str) -> str:
+        value = latex.replace(r"\ ", " ")
+        value = re.sub(r"([A-Za-z])_\{[^{}]+\}", r"\1sub", value)
+        value = re.sub(r"\\mathrm\{([^{}]+)\}", r"\1", value)
+        if r"\cdots" in value:
+            raise ValueError("带余除法的省略号表达不属于单一符号等式")
+
+        proportion = re.fullmatch(
+            r"\s*([^:=]+?)\s*:\s*([^:=]+?)\s*=\s*([^:=]+?)\s*:\s*([^:=]+?)\s*",
+            value,
+        )
+        if proportion:
+            left_top, left_bottom, right_top, right_bottom = proportion.groups()
+            return (
+                rf"\frac{{{left_top.strip()}}}{{{left_bottom.strip()}}}"
+                rf"=\frac{{{right_top.strip()}}}{{{right_bottom.strip()}}}"
+            )
+        if ":" in value and "=" not in value:
+            value = value.replace(":", "/")
+        return value
 
     @staticmethod
     def _parse_expressions(latex: str) -> list[object]:
