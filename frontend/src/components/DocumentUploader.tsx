@@ -9,7 +9,7 @@ interface Props {
   onSubmit: () => void
 }
 
-const ACCEPT = '.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx'
+const ACCEPT = 'application/pdf,.pdf'
 
 export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -21,7 +21,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
       <div className="section-heading-row">
         <div>
           <h2 id="upload-heading">上传教案</h2>
-          <p>支持 PDF、PPT、Excel 与常见图片，单文件最大 200 MB。</p>
+          <p>仅支持 PDF 格式，单文件最大 200 MB。</p>
         </div>
         <span className="format-note">MinerU · VLM</span>
       </div>
@@ -61,7 +61,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
         ) : (
           <button type="button" className="drop-trigger" onClick={() => inputRef.current?.click()}>
             <span className="upload-icon"><Upload size={24} /></span>
-            <strong>拖入文件，或点击选择</strong>
+            <strong>拖入 PDF 文件，或点击选择</strong>
             <span>源文件仅用于本次 PoC 解析</span>
           </button>
         )}

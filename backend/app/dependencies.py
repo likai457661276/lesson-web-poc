@@ -22,7 +22,6 @@ def get_asset_service() -> AssetService:
 @lru_cache
 def get_document_service() -> DocumentService:
     return DocumentService(
-        settings=settings,
         parser=MinerUDocumentParser(settings),
         adapter=MinerUAdapter(),
         storage=get_storage(),

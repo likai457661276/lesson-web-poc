@@ -1,8 +1,7 @@
 lesson:
-  frontend-origin: http://localhost:5173
+  frontend-origins: http://localhost:5173,http://127.0.0.1:5173
   data-dir: target/test-data
   max-file-size: 200MB
-  allowed-extensions: .pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx
 
 mineru:
   api-key: ""

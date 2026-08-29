@@ -33,13 +33,16 @@ java -version
 - `MINERU_TIMEOUT_SECONDS`：默认 `600`。
 - `DATA_DIR`：默认 `../data/jobs`。
 - `MAX_FILE_SIZE_MB`：默认 `200`。
+- `FRONTEND_ORIGINS`：默认允许 `http://localhost:5173` 与 `http://127.0.0.1:5173`，用逗号分隔。
 
-支持格式默认为 PDF、PPT/PPTX、XLS/XLSX 与常见图片。Java 服务使用 `application.yml` 中的 `lesson.allowed-extensions` 配置该列表；若需通过环境变量覆盖，使用 Spring 的规范名 `LESSON_ALLOWED_EXTENSIONS`。
+仅支持 PDF 输入文件，并在保存前校验 PDF 文件头。
 
 启动示例：
 
 ```bash
-export MINERU_API_KEY="your-token"
+set -a
+source .env
+set +a
 ./mvnw spring-boot:run
 ```
 

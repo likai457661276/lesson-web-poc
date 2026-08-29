@@ -18,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,6 +25,7 @@ import java.util.UUID;
 public class DocumentParseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DocumentParseService.class);
+    private static final byte[] PDF_SIGNATURE = "%PDF-".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
 
     private final LessonProperties properties;
     private final LocalStorage storage;
@@ -52,8 +52,8 @@ public class DocumentParseService {
 
     public Submission createJob(MultipartFile upload) {
         String filename = safeFilename(upload.getOriginalFilename());
-        if (filename.isBlank() || !properties.allowedExtensionSet().contains(extensionOf(filename))) {
-            throw new AppException("UNSUPPORTED_FILE", "不支持该文件类型", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        if (filename.isBlank() || !filename.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf") || !hasPdfSignature(upload)) {
+            throw new AppException("UNSUPPORTED_FILE", "仅支持 PDF 格式文件", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
         }
         String jobId = UUID.randomUUID().toString();
         Path sourcePath = storage.saveUpload(jobId, filename, upload);
@@ -102,9 +102,12 @@ public class DocumentParseService {
         return slash < 0 ? normalized : normalized.substring(slash + 1);
     }
 
-    private String extensionOf(String filename) {
-        int dot = filename.lastIndexOf('.');
-        return dot < 0 ? "" : filename.substring(dot).toLowerCase(Locale.ROOT);
+    private boolean hasPdfSignature(MultipartFile upload) {
+        try (var input = upload.getInputStream()) {
+            return java.util.Arrays.equals(input.readNBytes(PDF_SIGNATURE.length), PDF_SIGNATURE);
+        } catch (java.io.IOException exception) {
+            return false;
+        }
     }
 
     public record Submission(ParseJob job, Path sourcePath) {

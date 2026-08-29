@@ -10,10 +10,9 @@ server:
   port: 10012
 
 lesson:
-  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  frontend-origins: ${FRONTEND_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   data-dir: ${DATA_DIR:../data/jobs}
   max-file-size: ${MAX_FILE_SIZE_MB:200}MB
-  allowed-extensions: .pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx
 
 mineru:
   api-key: ${MINERU_API_KEY:}

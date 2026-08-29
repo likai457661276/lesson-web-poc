@@ -48,10 +48,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .intro-copy p { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.7; max-width: 370px; }
 
 .upload-panel { border-top: 1px solid var(--line); padding-top: 22px; animation: rise .55s .06s ease both; }
-.section-heading-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 10px 0 20px; }
+.section-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 10px 0 20px; }
 .section-heading-row h2, .preview-toolbar h2 { font-size: 18px; margin: 0 0 6px; letter-spacing: -.02em; }
 .section-heading-row p { color: var(--muted); font-size: 12px; margin: 0; line-height: 1.5; }
 .format-note, .block-count { flex: none; color: var(--muted); background: #eaede8; padding: 6px 9px; border-radius: 99px; font-size: 10px; letter-spacing: .05em; }
+.section-heading-row .format-note { margin-top: 1px; }
 
 .drop-zone { min-height: 152px; border: 1px dashed #aeb8b1; display: flex; align-items: center; padding: 20px; transition: border-color .2s, background .2s, transform .2s; }
 .drop-zone.is-dragging { border-color: var(--accent); background: #edf7f3; transform: translateY(-2px); }

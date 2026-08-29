@@ -10,12 +10,11 @@ cp .env.example .env
 
 必须填写 `MINERU_API_KEY`。该值由 `app/core/config.py` 从 `.env` 读取，不应提交真实密钥。
 
-支持的输入格式由 `ALLOWED_EXTENSIONS` 控制，默认包含 PDF、PPT/PPTX、XLS/XLSX 与常见图片。主要配置项：
+仅支持 PDF 输入文件，并在保存前校验 PDF 文件头。主要配置项：
 
-- `FRONTEND_ORIGIN=http://localhost:5173`
+- `FRONTEND_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`
 - `DATA_DIR=../data/jobs`
 - `MAX_FILE_SIZE_MB=200`
-- `ALLOWED_EXTENSIONS=.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx`
 - `MINERU_BASE_URL=https://mineru.net/api/v4`
 - `MINERU_MODEL_VERSION=vlm`
 - `MINERU_LANGUAGE=ch`

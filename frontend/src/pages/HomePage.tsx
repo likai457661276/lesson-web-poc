@@ -40,6 +40,18 @@ export function HomePage() {
     }
   }
 
+  const selectFile = (nextFile: File) => {
+    if (!nextFile.name.toLowerCase().endsWith('.pdf')) {
+      setFile(null)
+      setJob(null)
+      setError('仅支持 PDF 格式文件')
+      return
+    }
+    setFile(nextFile)
+    setJob(null)
+    setError('')
+  }
+
   return (
     <main>
       <header className="app-header">
@@ -60,7 +72,7 @@ export function HomePage() {
           <DocumentUploader
             file={file}
             disabled={Boolean(busy)}
-            onFile={(nextFile) => { setFile(nextFile); setJob(null); setError('') }}
+            onFile={selectFile}
             onClear={() => { setFile(null); setJob(null); setError('') }}
             onSubmit={submit}
           />

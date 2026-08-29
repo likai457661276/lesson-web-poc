@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -47,7 +48,7 @@ class DocumentParseServiceTest {
         DocumentParseService service = service(storage, jobs, parser);
 
         DocumentParseService.Submission submission = service.createJob(new MockMultipartFile(
-                "file", "lesson.pdf", "application/pdf", "pdf".getBytes()));
+                "file", "lesson.pdf", "application/pdf", "%PDF-1.7".getBytes()));
         assertThat(submission.job().status()).isEqualTo(JobStatus.PENDING);
         service.processJob(submission.job().jobId(), submission.sourcePath());
 
@@ -71,13 +72,27 @@ class DocumentParseServiceTest {
         DocumentParseService service = service(storage, jobs, parser);
 
         DocumentParseService.Submission submission = service.createJob(new MockMultipartFile(
-                "file", "lesson.pdf", "application/pdf", "pdf".getBytes()));
+                "file", "lesson.pdf", "application/pdf", "%PDF-1.7".getBytes()));
         service.processJob(submission.job().jobId(), submission.sourcePath());
 
         var failed = service.getJob(submission.job().jobId());
         assertThat(failed.status()).isEqualTo(JobStatus.FAILED);
         assertThat(failed.error().code()).isEqualTo("MINERU_PARSE_FAILED");
         assertThat(failed.error().message()).isEqualTo("上游失败");
+    }
+
+    @Test
+    void rejectsNonPdfFilesAndInvalidPdfContent() {
+        DocumentParseService service = service(storage(new ObjectMapper()), new ParseJobService(), mock(MineruDocumentParser.class));
+
+        assertThatThrownBy(() -> service.createJob(new MockMultipartFile(
+                "file", "lesson.png", "image/png", "image".getBytes())))
+                .isInstanceOf(com.lessonweb.lesson.exception.AppException.class)
+                .hasMessage("仅支持 PDF 格式文件");
+        assertThatThrownBy(() -> service.createJob(new MockMultipartFile(
+                "file", "lesson.pdf", "application/pdf", "not a PDF".getBytes())))
+                .isInstanceOf(com.lessonweb.lesson.exception.AppException.class)
+                .hasMessage("仅支持 PDF 格式文件");
     }
 
     private DocumentParseService service(
@@ -96,6 +111,6 @@ class DocumentParseServiceTest {
 
     private LessonProperties properties() {
         return new LessonProperties(
-                "http://localhost:5173", tempDir.toString(), DataSize.ofMegabytes(200), ".pdf");
+                "http://localhost:5173", tempDir.toString(), DataSize.ofMegabytes(200));
     }
 }

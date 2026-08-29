@@ -1,6 +1,6 @@
 # Lesson Web PoC
 
-本项目验证“文件上传 → MinerU → `LessonDocument v1` → Web 渲染”闭环。支持 PDF、PPT/PPTX、XLS/XLSX 与常见图片；前端只消费稳定的 `LessonDocument v1`，不读取 MinerU 原始结果。
+本项目验证“文件上传 → MinerU → `LessonDocument v1` → Web 渲染”闭环。仅支持 PDF 文件；前端只消费稳定的 `LessonDocument v1`，不读取 MinerU 原始结果。
 
 ## 目录
 

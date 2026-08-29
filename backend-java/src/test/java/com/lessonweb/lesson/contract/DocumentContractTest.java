@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -35,7 +36,7 @@ class DocumentContractTest {
 
     @Test
     void parseAndGetUsePythonFieldNamesAndStatuses() throws Exception {
-        var file = new MockMultipartFile("file", "课程.pdf", "application/pdf", "fake".getBytes());
+        var file = new MockMultipartFile("file", "课程.pdf", "application/pdf", "%PDF-1.7 fake".getBytes());
         String body = mockMvc.perform(multipart("/api/documents/parse").file(file))
                 .andExpect(status().isAccepted())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -55,11 +56,11 @@ class DocumentContractTest {
 
     @Test
     void unsupportedUploadMatchesApplicationErrorContract() throws Exception {
-        var file = new MockMultipartFile("file", "课程.docx", "application/octet-stream", "fake".getBytes());
+        var file = new MockMultipartFile("file", "课程.png", "image/png", "fake".getBytes());
         mockMvc.perform(multipart("/api/documents/parse").file(file))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_FILE"))
-                .andExpect(jsonPath("$.error.message").value("不支持该文件类型"));
+                .andExpect(jsonPath("$.error.message").value("仅支持 PDF 格式文件"));
     }
 
     @Test
@@ -109,5 +110,16 @@ class DocumentContractTest {
         mockMvc.perform(multipart("/api/documents/parse"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.detail[0].loc[1]").value("file"));
+    }
+
+    @Test
+    void corsAllowsBothLocalFrontendOrigins() throws Exception {
+        for (String origin : new String[]{"http://localhost:5173", "http://127.0.0.1:5173"}) {
+            mockMvc.perform(options("/api/documents/parse")
+                            .header("Origin", origin)
+                            .header("Access-Control-Request-Method", "POST"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Access-Control-Allow-Origin", origin));
+        }
     }
 }

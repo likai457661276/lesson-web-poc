@@ -7,7 +7,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Node 与 pnpm 由 Volta 根据 `package.json` 自动切换；包源由 `.npmrc` 统一配置。开发服务器位于 `http://localhost:5173`，并代理 `/api` 到 `VITE_API_PROXY_TARGET` 指定的后端（默认 `http://localhost:10011`）。上传组件支持 PDF、PPT/PPTX、XLS/XLSX 与常见图片，单文件上限 200 MB（由后端执行最终校验）。
+Node 与 pnpm 由 Volta 根据 `package.json` 自动切换；包源由 `.npmrc` 统一配置。开发服务器位于 `http://localhost:5173`，并代理 `/api` 到 `VITE_API_PROXY_TARGET` 指定的后端（默认 `http://localhost:10011`）。上传组件仅支持 PDF，单文件上限 200 MB（由后端执行最终校验）。
 
 验证：
 

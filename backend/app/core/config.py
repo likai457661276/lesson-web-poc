@@ -11,12 +11,10 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 10011
     log_level: str = "INFO"
-    frontend_origin: str = "http://localhost:5173"
+    frontend_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     data_dir: Path = Path("../data/jobs")
     max_file_size_mb: int = 200
-    allowed_extensions: str = ".pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx"
-
     mineru_api_key: str = Field(default="", repr=False)
     mineru_base_url: str = "https://mineru.net/api/v4"
     mineru_model_version: str = "vlm"
@@ -31,13 +29,8 @@ class Settings(BaseSettings):
     )
 
     @property
-    def allowed_extension_set(self) -> set[str]:
-        return {
-            item.strip().lower()
-            for item in self.allowed_extensions.split(",")
-            if item.strip()
-        }
-
+    def frontend_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.frontend_origins.split(",") if origin.strip()]
 
 @lru_cache
 def get_settings() -> Settings:
