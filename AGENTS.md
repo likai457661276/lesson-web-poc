@@ -8,7 +8,7 @@
 
 - 前端：React、TypeScript、Vite、React Router；Node 与 pnpm 版本以 `frontend/package.json` 的 `volta` 字段为准。
 - Python 后端：Python 3.12、FastAPI、uv；Python 包统一使用阿里云 PyPI 源。本地开发和测试统一使用 `uv`，Docker 仅保留单一 `backend/docker-compose.yml`。
-- Java 后端：Java 17、Spring Boot、项目内 Maven Wrapper；JDK 版本以 `backend-java/pom.xml` 为准，存在 `.sdkmanrc` 时使用 SDKMAN 激活。构建前核验工具链。
+- Java 后端：Java 17、Spring Boot、项目内 Maven Wrapper；JDK 版本以 `backend-java/pom.xml` 为准，存在 `.sdkmanrc` 时使用 SDKMAN 激活。构建前核验工具链。本地运行必须使用 `backend-java/run-local.sh`，不得直接执行 `./mvnw spring-boot:run`；该脚本负责加载 `backend-java/.env`、校验 `MINERU_API_KEY` 并激活项目 Java 环境。
 - 前端包统一使用 `frontend/.npmrc` 中的镜像源。
 - 密钥只能从环境变量读取，禁止写入源码、日志、示例或提交记录。
 
@@ -17,7 +17,7 @@
 - 前端只消费 `LessonDocument v1`，不得引用 MinerU 原始字段。
 - Python Provider 调用放在 `backend/app/parsers/`，结果转换放在 `backend/app/adapters/`；Java 分别位于 `backend-java/.../parser/`、`client/` 与 `adapter/`。
 - 两套 API 路由/Controller 保持轻量，流程编排分别放在 Python `services/` 与 Java `service/`。
-- Python 与 Java 后端共享 API 和 `LessonDocument v1` 契约；默认端口分别为 10011 和 10012，可同时运行。前端默认代理到 Python 后端，可通过 `VITE_API_PROXY_TARGET` 切换目标。
+- Python 与 Java 后端共享 API 和 `LessonDocument v1` 契约；默认端口分别为 10011 和 10012，可同时运行。前端默认代理到 Java 后端 `http://127.0.0.1:10012`，通过 `frontend/.env.local` 中的 `VITE_API_PROXY_TARGET` 配置；如需切换到 Python 后端，必须显式修改该配置并重启前端。
 - PoC 只支持 heading、paragraph、list、table、image、formula 六类内容块。
 - 变更协议时必须同步两套后端模型、前端类型、契约测试和 `docs/LESSON_DOCUMENT_V1.md`。
 

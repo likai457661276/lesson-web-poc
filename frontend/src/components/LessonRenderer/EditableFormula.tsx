@@ -5,6 +5,7 @@ import { validateFormula, type FormulaValidationResult } from '../../api/documen
 interface EditableFormulaProps {
   latex: string
   displayMode?: boolean
+  onChange?: (latex: string) => void
 }
 
 function renderLatex(latex: string, displayMode: boolean): { html: string; error: string } {
@@ -25,7 +26,7 @@ function renderLatex(latex: string, displayMode: boolean): { html: string; error
   }
 }
 
-export function EditableFormula({ latex: initialLatex, displayMode = false }: EditableFormulaProps) {
+export function EditableFormula({ latex: initialLatex, displayMode = false, onChange }: EditableFormulaProps) {
   const [latex, setLatex] = useState(initialLatex)
   const [draft, setDraft] = useState(initialLatex)
   const [editing, setEditing] = useState(false)
@@ -41,10 +42,12 @@ export function EditableFormula({ latex: initialLatex, displayMode = false }: Ed
     setRequestError('')
     try {
       const result = await validateFormula(draft)
+      const nextLatex = result.normalizedLatex || draft.trim()
       setValidation(result)
-      setLatex(result.normalizedLatex || draft.trim())
-      setDraft(result.normalizedLatex || draft.trim())
+      setLatex(nextLatex)
+      setDraft(nextLatex)
       setEditing(false)
+      onChange?.(nextLatex)
     } catch (reason) {
       setRequestError(reason instanceof Error ? reason.message : '公式校验失败')
     } finally {

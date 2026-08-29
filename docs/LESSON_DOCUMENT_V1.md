@@ -30,7 +30,7 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
 
 标题块的 `alignment` 表示源文档中的语义对齐方式。Adapter 应从 Provider 的版面几何信息通用推导；缺少可靠几何信息时使用 `left`，不得根据标题文字或文件名猜测。标题 `text` 可包含由可靠 OCR 行内几何恢复出的有效空白，Web Renderer 和 DOCX Exporter 通过保留空白还原标题内部的相对位置。各输出端使用语义对齐排版，不消费 Provider 坐标。
 
-当前 Web Renderer 支持会话内基础编辑：文档标题、标题块、段落、列表项、图片说明和表格单元格可通过编辑模式直接修改。PoC 不包含数据库，因此这些修改不会回写源文件，也不会跨页面刷新持久化。
+当前 Web Renderer 支持基础编辑：文档标题、标题块、段落、列表项、图片说明和表格单元格可通过编辑模式直接修改。PoC 不包含服务端数据库；解析完成的 `LessonDocument` 与图片资源缓存在浏览器 IndexedDB 中，刷新后仍可查看、继续编辑、导出 DOCX 或从本机删除。这些修改不会回写源 PDF。缓存中的 `LessonDocument` 是编辑与导出的唯一内容数据源；DOCX 导出必须从最新文档数据和缓存图片重建导出 HTML，不得以当前页面 DOM 作为持久化结果，便于后续将同一份数据接入服务端保存。后续服务端保存能力仅在 Java 后端实现，Python 后端不纳入该功能范围。
 
 ## 示例
 

@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import type { ListBlock as List } from '../../types/lesson-document'
 
-export function ListBlock({ block, editable }: { block: List; editable: boolean }) {
+export function ListBlock({
+  block,
+  editable,
+  onChange,
+}: {
+  block: List
+  editable: boolean
+  onChange?: (block: List) => void
+}) {
   const [items, setItems] = useState(block.items)
   const Tag = block.ordered ? 'ol' : 'ul'
   return (
@@ -16,6 +24,7 @@ export function ListBlock({ block, editable }: { block: List; editable: boolean 
             const next = [...items]
             next[index] = event.currentTarget.textContent?.trim() || item
             setItems(next)
+            onChange?.({ ...block, items: next })
           }}
         >
           {item}

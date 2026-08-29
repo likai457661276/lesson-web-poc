@@ -81,6 +81,23 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .privacy-note { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 11px; line-height: 1.55; margin-top: 30px; }
 .privacy-note svg { color: var(--accent); flex: none; }
 
+.document-library { border-top: 1px solid var(--line); padding-top: 22px; margin-top: 22px; animation: rise .55s .1s ease both; }
+.library-empty { color: var(--muted); margin: 0; font-size: 12px; line-height: 1.6; }
+.library-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: min(42vh, 420px); overflow: auto; }
+.library-item { border: 1px solid #d5dbd4; background: rgba(255, 255, 255, .55); }
+.library-item.is-active { border-color: #9cc4bb; background: white; box-shadow: 0 8px 20px rgba(24, 35, 33, .05); }
+.library-item-main { width: 100%; border: 0; padding: 12px 12px 8px; background: transparent; display: flex; align-items: flex-start; text-align: left; }
+.library-item-main:disabled { cursor: not-allowed; opacity: .6; }
+.library-item-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; margin-left: 12px; }
+.library-item-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.library-item-copy span { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.library-item-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 10px 66px; }
+.library-item-actions button { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 99px; padding: 5px 8px; color: var(--accent-dark); background: #eef4f1; font-size: 10px; font-weight: 600; }
+.library-item-actions button:hover:not(:disabled) { background: #e0eee9; }
+.library-item-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.library-item-actions button.is-danger { color: #9a3f3f; background: #f7ecec; }
+.library-item-actions button.is-danger:hover:not(:disabled) { background: #f3dddd; }
+
 .preview-stage { padding: 28px clamp(24px, 5vw, 74px) 70px; background: #e9ece7; overflow: hidden; }
 .preview-toolbar { height: 70px; max-width: 900px; margin: 0 auto 18px; display: flex; align-items: center; justify-content: space-between; }
 .preview-toolbar > div { display: flex; align-items: baseline; gap: 14px; }
@@ -181,6 +198,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
   .lesson-document { min-height: 700px; }
   .document-edit-toolbar { margin-top: -22px; align-items: flex-start; }
   .document-toolbar-actions { flex-direction: column-reverse; align-items: stretch; }
+  .library-list { max-height: 280px; }
+  .library-item-actions { padding-left: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
