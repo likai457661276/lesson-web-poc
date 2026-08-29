@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: lesson-web-poc-java
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+
+server:
+  port: 8000
+
+lesson:
+  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  data-dir: ${DATA_DIR:../data/jobs}
+  max-file-size: ${MAX_FILE_SIZE_MB:200}MB
+  allowed-extensions: .pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx
+
+mineru:
+  api-key: ${MINERU_API_KEY:}
+  base-url: ${MINERU_BASE_URL:https://mineru.net/api/v4}
+  model-version: ${MINERU_MODEL_VERSION:vlm}
+  language: ${MINERU_LANGUAGE:ch}
+  poll-interval: ${MINERU_POLL_INTERVAL_SECONDS:3}s
+  timeout: ${MINERU_TIMEOUT_SECONDS:600}s
+
+logging:
+  level:
+    edu.jas: WARN

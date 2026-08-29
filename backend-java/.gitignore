@@ -1,0 +1,5 @@
+target/
+.idea/
+*.iml
+data/jobs/*
+!data/jobs/.gitkeep

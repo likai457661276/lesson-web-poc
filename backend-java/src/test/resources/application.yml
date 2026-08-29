@@ -1,0 +1,18 @@
+lesson:
+  frontend-origin: http://localhost:5173
+  data-dir: target/test-data
+  max-file-size: 200MB
+  allowed-extensions: .pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx
+
+mineru:
+  api-key: ""
+  base-url: https://mineru.net/api/v4
+  model-version: vlm
+  language: ch
+  poll-interval: 1ms
+  timeout: 2s
+
+logging:
+  level:
+    com.lessonweb.lesson.service.DocumentParseService: OFF
+    edu.jas: WARN

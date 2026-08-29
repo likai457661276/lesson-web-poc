@@ -6,6 +6,7 @@
 
 ```text
 backend/   FastAPI API、MinerU Parser、Adapter 与本地资源存储
+backend-java/ Java 17 + Spring Boot 等价后端
 frontend/  Vite + React + Router 上传与 LessonDocument Renderer
 data/      本地解析任务和提取资源（不提交任务数据）
 samples/   手工准备的验收样本
@@ -16,6 +17,7 @@ docs/      协议和测试清单
 
 - Volta 2.x（Node 24.14.0、pnpm 10.28.0 由 `frontend/package.json` 固定）
 - Python 3.12 与 uv
+- JDK 17（Java 后端通过项目内 Maven Wrapper 构建）
 - 可选：Docker / Docker Compose（单一 `docker-compose.yml`）
 
 前端 npm registry 和后端 PyPI 均已配置为国内镜像。
@@ -30,6 +32,14 @@ cp .env.example .env
 # 编辑 .env，填写 MINERU_API_KEY
 uv sync --dev
 uv run --frozen uvicorn app.main:app --reload --port 8000
+```
+
+Java 后端（与 Python 后端二选一启动，默认同样使用 8000 端口）：
+
+```bash
+cd backend-java
+./mvnw test
+./mvnw spring-boot:run
 ```
 
 容器运行使用唯一的 Compose 配置，不区分 dev/prod：
@@ -54,7 +64,7 @@ pnpm dev
 
 - `POST /api/documents/parse`：上传 PDF 并创建解析任务
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
-- `POST /api/formulas/validate`：使用 SymPy 校验 LaTeX 结构并返回规范化结果
+- `POST /api/formulas/validate`：校验 LaTeX 结构并返回规范化结果（Python 使用 SymPy，Java 使用 Symja）
 - `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
 - `GET /api/assets/{jobId}/{filename}`：读取提取图片
 - `GET /api/health`：健康检查
