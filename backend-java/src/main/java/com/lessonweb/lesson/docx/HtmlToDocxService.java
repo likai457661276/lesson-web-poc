@@ -1,6 +1,7 @@
 package com.lessonweb.lesson.docx;
 
 import com.lessonweb.lesson.exception.AppException;
+import jakarta.xml.bind.JAXBElement;
 import org.docx4j.XmlUtils;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;
@@ -8,7 +9,10 @@ import org.docx4j.openpackaging.parts.WordprocessingML.NumberingDefinitionsPart;
 import org.docx4j.wml.ContentAccessor;
 import org.docx4j.wml.P;
 import org.docx4j.wml.R;
+import org.docx4j.wml.Tbl;
+import org.docx4j.wml.Tc;
 import org.docx4j.wml.Text;
+import org.docx4j.wml.Tr;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -131,7 +135,7 @@ public class HtmlToDocxService {
             return;
         }
         if ("table".equals(tag)) {
-            Object table = buildTable(element);
+            Object table = buildTable(element, state.document);
             if (table != null) {
                 state.main.addObject(table);
                 state.hasContent = true;
@@ -219,7 +223,7 @@ public class HtmlToDocxService {
         }
     }
 
-    private Object buildTable(Element source) throws Exception {
+    private Object buildTable(Element source, WordprocessingMLPackage document) throws Exception {
         List<Element> rows = source.select("tr");
         if (rows.isEmpty()) {
             return null;
@@ -243,12 +247,14 @@ public class HtmlToDocxService {
         }
         if (columns == 0) return null;
         int[] widths = tableWidths(placements, columns);
+        List<TableCellImage> cellImages = new ArrayList<>();
         StringBuilder xml = new StringBuilder("<w:tbl xmlns:w=\"").append(W_NS).append("\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">");
         xml.append("<w:tblPr><w:tblW w:w=\"9360\" w:type=\"dxa\"/><w:tblInd w:w=\"120\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\"/><w:left w:val=\"single\" w:sz=\"4\"/><w:bottom w:val=\"single\" w:sz=\"4\"/><w:right w:val=\"single\" w:sz=\"4\"/><w:insideH w:val=\"single\" w:sz=\"4\"/><w:insideV w:val=\"single\" w:sz=\"4\"/></w:tblBorders><w:tblCellMar><w:top w:w=\"120\" w:type=\"dxa\"/><w:start w:w=\"140\" w:type=\"dxa\"/><w:bottom w:w=\"120\" w:type=\"dxa\"/><w:end w:w=\"140\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         for (int width : widths) xml.append("<w:gridCol w:w=\"").append(width).append("\"/>");
         xml.append("</w:tblGrid>");
         for (int row = 0; row < rows.size(); row++) {
             xml.append("<w:tr>");
+            int renderedCell = 0;
             if (row == 0 && !"false".equalsIgnoreCase(source.attr("data-repeat-header")) && !directChildren(rows.get(0), Set.of("th")).isEmpty()) {
                 xml.append("<w:trPr><w:tblHeader w:val=\"true\"/></w:trPr>");
             }
@@ -268,13 +274,52 @@ public class HtmlToDocxService {
                 xml.append("<w:vAlign w:val=\"center\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"0\"/>");
                 if (start != null && start.cell.hasClass("lesson-layout-centered-cell")) xml.append("<w:jc w:val=\"center\"/>");
                 xml.append("</w:pPr>");
-                if (start != null) xml.append(inlineXml(start.cell, "th".equals(start.cell.normalName())));
+                if (start != null) {
+                    boolean header = "th".equals(start.cell.normalName());
+                    xml.append(inlineXml(start.cell, header));
+                    for (Element image : start.cell.select("img")) {
+                        cellImages.add(new TableCellImage(row, renderedCell, image, header));
+                    }
+                }
                 xml.append("</w:p></w:tc>");
+                renderedCell++;
             }
             xml.append("</w:tr>");
         }
         xml.append("</w:tbl>");
-        return XmlUtils.unmarshalString(xml.toString());
+        Tbl table = (Tbl) XmlUtils.unmarshalString(xml.toString());
+        appendTableImages(table, cellImages, document);
+        return table;
+    }
+
+    private void appendTableImages(Tbl table, List<TableCellImage> cellImages, WordprocessingMLPackage document) {
+        List<Tr> rows = table.getContent().stream().map(value -> unwrap(value, Tr.class)).filter(java.util.Objects::nonNull).toList();
+        for (TableCellImage entry : cellImages) {
+            if (entry.row >= rows.size()) continue;
+            List<Tc> cells = rows.get(entry.row).getContent().stream()
+                    .map(value -> unwrap(value, Tc.class))
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            if (entry.cell >= cells.size()) continue;
+            P paragraph = cells.get(entry.cell).getContent().stream()
+                    .map(value -> unwrap(value, P.class))
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            if (paragraph == null) continue;
+            if (!images.append(document, paragraph, entry.image) && !entry.image.attr("alt").isBlank()) {
+                InlineStyle style = entry.bold ? InlineStyle.PLAIN.merge("th") : InlineStyle.PLAIN;
+                appendText(paragraph, "[图片：" + entry.image.attr("alt").trim() + "]", style.withItalic());
+            }
+        }
+    }
+
+    private <T> T unwrap(Object value, Class<T> type) {
+        if (type.isInstance(value)) return type.cast(value);
+        if (value instanceof JAXBElement<?> element && type.isInstance(element.getValue())) {
+            return type.cast(element.getValue());
+        }
+        return null;
     }
 
     private String inlineXml(Node node, boolean bold) {
@@ -455,6 +500,7 @@ public class HtmlToDocxService {
 
     public record ExportResult(byte[] content, String filename) {}
     private record Placement(int row, int column, int rowspan, int colspan, Element cell) {}
+    private record TableCellImage(int row, int cell, Element image, boolean bold) {}
     private static final class RenderState {
         private final WordprocessingMLPackage document;
         private final MainDocumentPart main;

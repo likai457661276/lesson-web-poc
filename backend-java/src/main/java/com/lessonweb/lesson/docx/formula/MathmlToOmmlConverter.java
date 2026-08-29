@@ -9,6 +9,7 @@ import org.xml.sax.InputSource;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
+import java.util.Set;
 
 @Component
 public class MathmlToOmmlConverter {
@@ -30,36 +31,38 @@ public class MathmlToOmmlConverter {
 
     private String render(Node node) {
         if (node.getNodeType() == Node.TEXT_NODE) {
-            return textRun(node.getNodeValue());
+            return textRun(node.getNodeValue(), "p");
         }
         if (!(node instanceof Element element)) {
             return "";
         }
         String name = element.getLocalName();
         return switch (name) {
-            case "math", "mrow" -> children(element);
-            case "mi", "mn", "mo" -> textRun(element.getTextContent());
+            case "math", "mrow", "mstyle", "semantics", "annotation" -> children(element);
+            case "mi" -> textRun(element.getTextContent(), identifierStyle(element));
+            case "mn", "mo", "mtext" -> textRun(element.getTextContent(), "p");
             case "msup" -> binary(element, "sSup", "e", "sup");
             case "msub" -> binary(element, "sSub", "e", "sub");
             case "msubsup" -> ternary(element);
             case "mfrac" -> binary(element, "f", "num", "den");
-            case "msqrt" -> "<m:rad><m:radPr><m:degHide m:val=\"1\"/></m:radPr><m:deg/><m:e>"
-                    + children(element) + "</m:e></m:rad>";
+            case "msqrt" -> radical(children(element), "", true);
+            case "mroot" -> root(element);
+            case "mfenced" -> fenced(element);
             default -> children(element);
         };
     }
 
     private String binary(Element element, String container, String first, String second) {
-        Node a = element.getChildNodes().item(0);
-        Node b = element.getChildNodes().item(1);
+        Node a = childAt(element, 0);
+        Node b = childAt(element, 1);
         return "<m:" + container + "><m:" + first + ">" + render(a) + "</m:" + first + "><m:"
                 + second + ">" + render(b) + "</m:" + second + "></m:" + container + ">";
     }
 
     private String ternary(Element element) {
-        return "<m:sSubSup><m:e>" + render(element.getChildNodes().item(0)) + "</m:e><m:sub>"
-                + render(element.getChildNodes().item(1)) + "</m:sub><m:sup>"
-                + render(element.getChildNodes().item(2)) + "</m:sup></m:sSubSup>";
+        return "<m:sSubSup><m:e>" + render(childAt(element, 0)) + "</m:e><m:sub>"
+                + render(childAt(element, 1)) + "</m:sub><m:sup>"
+                + render(childAt(element, 2)) + "</m:sup></m:sSubSup>";
     }
 
     private String children(Element element) {
@@ -70,11 +73,44 @@ public class MathmlToOmmlConverter {
         return result.toString();
     }
 
-    private String textRun(String value) {
+    private String root(Element element) {
+        return radical(render(childAt(element, 0)), render(childAt(element, 1)), false);
+    }
+
+    private String radical(String expression, String degree, boolean hideDegree) {
+        String properties = hideDegree ? "<m:radPr><m:degHide m:val=\"1\"/></m:radPr>" : "";
+        String degreeXml = hideDegree ? "<m:deg/>" : "<m:deg>" + degree + "</m:deg>";
+        return "<m:rad>" + properties + degreeXml + "<m:e>" + expression + "</m:e></m:rad>";
+    }
+
+    private String fenced(Element element) {
+        String open = element.hasAttribute("open") ? element.getAttribute("open") : "(";
+        String close = element.hasAttribute("close") ? element.getAttribute("close") : ")";
+        return "<m:d><m:dPr><m:begChr m:val=\"" + escapeAttribute(open) + "\"/><m:endChr m:val=\""
+                + escapeAttribute(close) + "\"/></m:dPr><m:e>" + children(element) + "</m:e></m:d>";
+    }
+
+    private Node childAt(Element element, int index) {
+        return index < element.getChildNodes().getLength() ? element.getChildNodes().item(index) : null;
+    }
+
+    private String identifierStyle(Element element) {
+        String value = element.getTextContent();
+        if ("normal".equals(element.getAttribute("mathvariant")) || Set.of("sin", "cos", "tan", "cot", "sec", "csc", "log", "ln", "lim", "max", "min").contains(value)) {
+            return "p";
+        }
+        return "i";
+    }
+
+    private String textRun(String value, String style) {
         if (value == null || value.isBlank()) {
             return "";
         }
         String escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-        return "<m:r><m:t>" + escaped + "</m:t></m:r>";
+        return "<m:r><m:rPr><m:sty m:val=\"" + style + "\"/></m:rPr><m:t>" + escaped + "</m:t></m:r>";
+    }
+
+    private String escapeAttribute(String value) {
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 }

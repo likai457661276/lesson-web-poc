@@ -4,13 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lessonweb.lesson.config.MineruProperties;
 import com.lessonweb.lesson.exception.MineruException;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -22,11 +25,16 @@ public class MineruClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final MineruProperties properties;
+    private final HttpClient uploadClient;
 
     public MineruClient(RestClient mineruRestClient, ObjectMapper objectMapper, MineruProperties properties) {
         this.restClient = mineruRestClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.uploadClient = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .connectTimeout(properties.timeout())
+                .build();
     }
 
     public UploadTarget createUpload(String filename) {
@@ -42,7 +50,8 @@ public class MineruClient {
                 .uri(properties.baseUrl() + "/file-urls/batch")
                 .header(HttpHeaders.AUTHORIZATION, bearerToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(payload)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(jsonRequestBody(payload))
                 .exchange((request, result) -> readResponse(result.getStatusCode().value(), result.getBody()));
         JsonNode json = apiJson(response, "申请上传地址失败");
         JsonNode data = json.path("data");
@@ -55,12 +64,21 @@ public class MineruClient {
     }
 
     public void uploadFile(String uploadUrl, Path file) {
-        HttpResult response = restClient.put()
-                .uri(uploadUrl)
-                .body(new FileSystemResource(file))
-                .exchange((request, result) -> readResponse(result.getStatusCode().value(), result.getBody()));
-        if (response.status() != 200 && response.status() != 201 && response.status() != 204) {
-            throw new MineruException("文件上传失败（HTTP " + response.status() + "）");
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(uploadUrl))
+                    .timeout(properties.timeout())
+                    // MinerU's pre-signed upload URL does not sign a Content-Type header.
+                    .PUT(HttpRequest.BodyPublishers.ofFile(file))
+                    .build();
+            HttpResponse<Void> response = uploadClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() != 200 && response.statusCode() != 201 && response.statusCode() != 204) {
+                throw new MineruException("文件上传失败（HTTP " + response.statusCode() + "）");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new MineruException("文件上传被中断", exception);
+        } catch (IOException exception) {
+            throw new MineruException("文件上传失败", exception);
         }
     }
 
@@ -129,6 +147,14 @@ public class MineruClient {
             throw new MineruException(context + "：" + message);
         }
         return payload;
+    }
+
+    private byte[] jsonRequestBody(Map<String, Object> payload) {
+        try {
+            return objectMapper.writeValueAsBytes(payload);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new MineruException("MinerU 请求序列化失败", exception);
+        }
     }
 
     private HttpResult readResponse(int status, java.io.InputStream body) throws IOException {

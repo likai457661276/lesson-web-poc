@@ -54,7 +54,7 @@ class HtmlToDocxServiceTest {
         assertThat(document).doesNotContain("网页预览标题");
         assertThat(document).contains("w:pStyle w:val=\"HTMLTitle\"", "w:jc w:val=\"center\"");
         assertThat(document).contains("w:b", "w:i", "w:u", "superscript", "subscript");
-        assertThat(document).contains("m:oMath", "m:sSup", "m:f", "m:rad", "≤", "sin", "cos", "°");
+        assertThat(document).contains("m:oMath", "m:sSup", "m:f", "m:rad", "≤", "sin", "cos", "∘");
         assertThat(document).contains("w:tbl", "w:gridSpan w:val=\"2\"", "w:vMerge w:val=\"restart\"");
         assertThat(document).contains("w:drawing");
         assertThat(text(parts, "word/numbering.xml")).contains("w:numFmt w:val=\"bullet\"", "w:numFmt w:val=\"decimal\"");
@@ -75,6 +75,19 @@ class HtmlToDocxServiceTest {
     void supportsDisablingRepeatedTableHeader() throws Exception {
         byte[] content = service.export("<table data-repeat-header='false'><tr><th>A</th></tr><tr><td>B</td></tr></table>", "a").content();
         assertThat(text(unzip(content), "word/document.xml")).doesNotContain("w:tblHeader");
+    }
+
+    @Test
+    void embedsDataUrlImagesInsideTableCells() throws Exception {
+        String image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        byte[] content = service.export("""
+                <table><tr><td>单元格图片 <img alt="像素" src="data:image/png;base64,%s"></td></tr></table>
+                """.formatted(image), "table-image").content();
+        Map<String, byte[]> parts = unzip(content);
+
+        assertThat(parts.keySet()).anyMatch(name -> name.startsWith("word/media/"));
+        assertThat(text(parts, "word/document.xml")).contains("w:drawing");
+        assertThat(text(parts, "word/_rels/document.xml.rels")).contains("relationships/image");
     }
 
     @Test
