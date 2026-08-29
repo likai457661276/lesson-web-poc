@@ -1,6 +1,6 @@
 # Lesson Web PoC
 
-把 PDF、PPT、Excel 或图片类教案交给 MinerU 解析，转换成稳定的 `LessonDocument v1`，再由 React 前端逐块渲染为 Web 教案。
+本项目仅支持 PDF 教案解析：文件经 MinerU 转换为稳定的 `LessonDocument v1`，再由 React 前端逐块渲染为 Web 教案。
 
 ## 目录
 
@@ -52,7 +52,7 @@ pnpm dev
 
 ## API
 
-- `POST /api/documents/parse`：上传文件并创建解析任务
+- `POST /api/documents/parse`：上传 PDF 并创建解析任务
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
 - `POST /api/formulas/validate`：使用 SymPy 校验 LaTeX 结构并返回规范化结果
 - `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
