@@ -28,7 +28,7 @@ public class LocalStorage {
     private final ObjectMapper objectMapper;
 
     public LocalStorage(LessonProperties properties, ObjectMapper objectMapper) {
-        this.root = properties.dataDir().toAbsolutePath().normalize();
+        this.root = Path.of(properties.dataDir()).toAbsolutePath().normalize();
         this.maxBytes = properties.maxFileSize().toBytes();
         this.objectMapper = objectMapper;
         try {

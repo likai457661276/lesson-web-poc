@@ -1,0 +1,2 @@
+# Keep the project runtime aligned with pom.xml (Java 17).
+java=17.0.20+1.1-zulu

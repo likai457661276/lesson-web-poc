@@ -1,5 +1,7 @@
 # Lesson Web PoC 项目架构技术方案
 
+> 历史架构规划文档，保留用于追溯早期方案；目录、技术边界和阶段性结论可能已过时。当前项目规范以仓库根目录 `README.md`、`AGENTS.md` 与 `docs/LESSON_DOCUMENT_V1.md` 为准。
+
 > 目标：使用 MinerU 将 Word / PDF / 图片类教案解析为统一的 `LessonDocument JSON`，再由前端渲染为 Web 教案。  
 > 当前阶段仅验证完整技术链路，不接数据库、不接第三方 Java 服务、不接阿里云 Document Mind。
 

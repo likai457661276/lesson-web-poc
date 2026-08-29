@@ -1,6 +1,6 @@
 # Lesson Web PoC Backend
 
-FastAPI 服务负责本地文件保存、MinerU 精准解析 API 调用、结果资源归档和 `LessonDocument v1` 标准化。
+FastAPI 服务负责本地文件保存、MinerU 精准解析 API 调用、结果资源归档和 `LessonDocument v1` 标准化。它与 `../backend-java/` 实现同一 API 契约；Python 默认监听 `10011`，Java 默认监听 `10012`，可同时启动。
 
 ## 配置
 
@@ -10,13 +10,17 @@ cp .env.example .env
 
 必须填写 `MINERU_API_KEY`。该值由 `app/core/config.py` 从 `.env` 读取，不应提交真实密钥。
 
-主要可调项：
+支持的输入格式由 `ALLOWED_EXTENSIONS` 控制，默认包含 PDF、PPT/PPTX、XLS/XLSX 与常见图片。主要配置项：
 
-- `MINERU_MODEL_VERSION=vlm`
-- `MINERU_TIMEOUT_SECONDS=600`
+- `FRONTEND_ORIGIN=http://localhost:5173`
+- `DATA_DIR=../data/jobs`
 - `MAX_FILE_SIZE_MB=200`
 - `ALLOWED_EXTENSIONS=.pdf,.png,.jpg,.jpeg,.jp2,.webp,.gif,.bmp,.ppt,.pptx,.xls,.xlsx`
-- `DATA_DIR=../data/jobs`
+- `MINERU_BASE_URL=https://mineru.net/api/v4`
+- `MINERU_MODEL_VERSION=vlm`
+- `MINERU_LANGUAGE=ch`
+- `MINERU_POLL_INTERVAL_SECONDS=3`
+- `MINERU_TIMEOUT_SECONDS=600`
 
 ## 本地运行
 
@@ -24,7 +28,7 @@ cp .env.example .env
 
 ```bash
 uv sync --dev
-uv run --frozen uvicorn app.main:app --reload --port 8000
+uv run --frozen uvicorn app.main:app --reload --port 10011
 ```
 
 测试：

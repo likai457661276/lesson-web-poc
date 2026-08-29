@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Lesson Web PoC API"
     app_env: str = "local"
     app_host: str = "0.0.0.0"
-    app_port: int = 8000
+    app_port: int = 10011
     log_level: str = "INFO"
     frontend_origin: str = "http://localhost:5173"
 

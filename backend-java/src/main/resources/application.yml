@@ -7,7 +7,7 @@ spring:
       max-request-size: 200MB
 
 server:
-  port: 8000
+  port: 10012
 
 lesson:
   frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}

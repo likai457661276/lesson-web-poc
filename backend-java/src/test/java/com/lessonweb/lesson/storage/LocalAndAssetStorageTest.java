@@ -63,7 +63,7 @@ class LocalAndAssetStorageTest {
 
     private LocalStorage storage(long maxBytes) {
         LessonProperties properties = new LessonProperties(
-                "http://localhost:5173", tempDir, DataSize.ofBytes(maxBytes), ".pdf");
+                "http://localhost:5173", tempDir.toString(), DataSize.ofBytes(maxBytes), ".pdf");
         return new LocalStorage(properties, new ObjectMapper().findAndRegisterModules());
     }
 }

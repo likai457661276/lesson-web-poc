@@ -1,5 +1,7 @@
 # lesson-web-poc：Spring Boot Java 17 后端复刻改造计划
 
+> 历史规划文档，保留用于追溯实施决策；其中的阶段状态、目录示例和“后续接入”描述不是当前项目规范。当前实现与运行方式以仓库根目录 `README.md`、`AGENTS.md` 及 `backend-java/README.md` 为准。
+
 > 目标：在现有项目中并行新增一套 **Java 17 + Spring Boot** 后端，复刻当前 Python FastAPI 后端能力，并保持现有前端接口契约尽量不变。  
 > 本阶段重点：**API 1:1、MinerU 解析链路 1:1、DOCX 导出效果 1:1**。  
 > 非目标：数据库重构、权限系统、微服务拆分、生产级任务队列、前端重写。

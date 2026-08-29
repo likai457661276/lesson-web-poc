@@ -1,20 +1,20 @@
 # AGENTS.md
 
-本文件定义 `backend` 项目的项目级代理协作规范。
+本文件定义 Python 后端的项目级代理协作规范。
 
-适用范围：仓库根目录及其所有子目录。
+适用范围：`backend/` 及其所有子目录。
 
 当用户指令与本文件冲突时，以用户指令为准。
 
 ## 1. 项目定位
 
-这是一个基于 Python 3.12 的标准 FastAPI 服务骨架，目标是提供一个可快速扩展的后端项目起点。
+这是 Lesson Web PoC 的 Python 3.12 + FastAPI 后端，实现文件上传、MinerU 解析、`LessonDocument v1` 转换、资源读取、公式校验和 DOCX 导出。它与 `backend-java/` 共享 API 和协议契约；Python 默认端口为 `10011`，Java 默认端口为 `10012`，可同时运行。
 
 代码主目录：
 
-- `app/`：应用主代码
+- `app/`：应用主代码；Provider 原始结构不得越过 Parser/Adapter 泄漏到 API 或前端
 - `tests/`：测试
-- `README.md`：对外说明与本地运行文档
+- `README.md`：Python 后端说明与本地运行文档
 - `pyproject.toml`：依赖、构建与测试配置
 - `Dockerfile`：容器镜像构建定义
 - `docker-compose.yml`：统一容器编排配置
@@ -54,13 +54,14 @@
 ### `app/`
 
 - `main.py` 负责应用入口与 FastAPI 装配。
-- `config.py` 负责配置读取与集中管理。
+- `core/config.py` 负责配置读取与集中管理。
 - `api/` 负责 HTTP 路由层，不在此处堆积复杂业务逻辑。
 - `parsers/` 只负责调用文档解析 Provider 并返回供应商原始结构。
 - `adapters/` 只负责把 Provider 结果转换为 `LessonDocument v1`。
 - `services/` 负责核心业务逻辑与服务编排。
 - `models/` 负责 Pydantic 协议和任务状态模型。
 - `storage/` 负责本地任务与资源文件读写。
+- `services/docx_export_service.py` 负责从前端 HTML 导出 DOCX；不得读取 MinerU 原始字段或坐标。
 
 ### `tests/`
 
@@ -83,7 +84,7 @@
 - 保持现有 API、Parser、Adapter、Model、Service 与 Storage 分层。
 - 优先复用现有模块，不重复创建相近职责的新文件。
 - 不为“看起来更完整”而引入额外抽象。
-- 除非任务明确要求，不修改接口契约、环境变量命名或错误语义。
+- 修改接口契约、环境变量或错误语义时，必须同步 Python 调用方、Java 等价实现、前端、测试与文档；不保留旧接口兼容层。
 
 ### 配置与密钥
 
@@ -97,7 +98,7 @@
 ```bash
 uv sync --dev
 uv run --frozen pytest
-uv run --frozen uvicorn app.main:app --reload --port 8000
+uv run --frozen uvicorn app.main:app --reload --port 10011
 docker compose up --build app
 ```
 
@@ -117,7 +118,7 @@ uv run --frozen pytest tests/test_health.py
 - 修改结构目录或关键约定
 - 修改 Docker 启动方式
 
-若改动只涉及内部实现且外部行为不变，可不更新 README，但应确保命名与代码可读性足够清晰。
+若改动只涉及内部实现且外部行为不变，可不更新 README，但应确保命名与代码可读性足够清晰。协议变更还必须更新仓库根目录的 `docs/LESSON_DOCUMENT_V1.md`。
 
 ## 8. 测试与验证
 

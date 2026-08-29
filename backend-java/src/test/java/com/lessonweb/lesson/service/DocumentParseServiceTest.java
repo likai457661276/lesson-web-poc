@@ -96,6 +96,6 @@ class DocumentParseServiceTest {
 
     private LessonProperties properties() {
         return new LessonProperties(
-                "http://localhost:5173", tempDir, DataSize.ofMegabytes(200), ".pdf");
+                "http://localhost:5173", tempDir.toString(), DataSize.ofMegabytes(200), ".pdf");
     }
 }
