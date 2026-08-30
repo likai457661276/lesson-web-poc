@@ -41,13 +41,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .system-status > span { width: 7px; height: 7px; border-radius: 50%; background: #21a67a; box-shadow: 0 0 0 4px rgba(33, 166, 122, .12); }
 
 .workspace { display: grid; grid-template-columns: minmax(350px, 430px) minmax(0, 1fr); min-height: calc(100vh - 76px); }
-.control-rail { padding: 54px 38px 32px; border-right: 1px solid var(--line); background: #f7f8f4; }
-.intro-copy { margin-bottom: 48px; animation: rise .5s ease both; }
+.control-rail {
+  padding: 54px 38px 32px;
+  border-right: 1px solid var(--line);
+  background: #f7f8f4;
+  display: flex;
+  flex-direction: column;
+}
+.intro-copy { margin-bottom: 48px; animation: rise .5s ease both; flex: none; }
 .eyebrow, .section-kicker { color: var(--accent); font-weight: 600; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; }
 .intro-copy h1 { font-family: ui-serif, 'Songti SC', STSong, serif; font-size: clamp(28px, 3vw, 42px); line-height: 1.25; letter-spacing: -.035em; margin: 14px 0 18px; max-width: 390px; }
 .intro-copy p { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.7; max-width: 370px; }
 
-.upload-panel { border-top: 1px solid var(--line); padding-top: 22px; animation: rise .55s .06s ease both; }
+.upload-panel { border-top: 1px solid var(--line); padding-top: 22px; animation: rise .55s .06s ease both; flex: none; }
 .section-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 10px 0 20px; }
 .section-heading-row h2, .preview-toolbar h2 { font-size: 18px; margin: 0 0 6px; letter-spacing: -.02em; }
 .section-heading-row p { color: var(--muted); font-size: 12px; margin: 0; line-height: 1.5; }
@@ -71,19 +77,38 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .primary-button:disabled { cursor: not-allowed; opacity: .55; }
 .spin { animation: spin 1s linear infinite; }
 
-.job-status { display: flex; gap: 12px; margin-top: 16px; border-left: 2px solid #c9a73c; padding: 10px 12px; background: #fffaf0; }
+.job-status { display: flex; gap: 12px; margin-top: 16px; border-left: 2px solid #c9a73c; padding: 10px 12px; background: #fffaf0; flex: none; }
 .job-status.completed { border-color: #23986d; background: #edf8f3; }
 .job-status.failed { border-color: #bd5555; background: #fff1f0; }
 .status-icon { margin-top: 1px; }
 .job-status > div:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .job-status strong { font-size: 12px; }
 .job-status span { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
-.privacy-note { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 11px; line-height: 1.55; margin-top: 30px; }
+.privacy-note { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 11px; line-height: 1.55; margin-top: 16px; flex: none; }
 .privacy-note svg { color: var(--accent); flex: none; }
 
-.document-library { border-top: 1px solid var(--line); padding-top: 22px; margin-top: 22px; animation: rise .55s .1s ease both; }
+.document-library {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 22px;
+  animation: rise .55s .1s ease both;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .library-empty { color: var(--muted); margin: 0; font-size: 12px; line-height: 1.6; }
-.library-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: min(42vh, 420px); overflow: auto; }
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
 .library-item { border: 1px solid #d5dbd4; background: rgba(255, 255, 255, .55); }
 .library-item.is-active { border-color: #9cc4bb; background: white; box-shadow: 0 8px 20px rgba(24, 35, 33, .05); }
 .library-item-main { width: 100%; border: 0; padding: 12px 12px 8px; background: transparent; display: flex; align-items: flex-start; text-align: left; }
@@ -198,7 +223,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
   .lesson-document { min-height: 700px; }
   .document-edit-toolbar { margin-top: -22px; align-items: flex-start; }
   .document-toolbar-actions { flex-direction: column-reverse; align-items: stretch; }
-  .library-list { max-height: 280px; }
+  .library-list { overflow: visible; }
   .library-item-actions { padding-left: 12px; }
 }
 
