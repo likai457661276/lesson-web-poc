@@ -73,6 +73,7 @@ pnpm dev
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
 - `POST /api/formulas/validate`：校验 LaTeX 结构并返回规范化结果（Python 使用 SymPy，Java 使用 Symja）
 - `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
+- `POST /api/documents/export-docx-batch`：仅 Java 支持，接收 `{"documents":[{"html":"<p>内容</p>","filename":"课程.docx"}]}`，返回包含各篇 DOCX 的 ZIP
 - `GET /api/assets/{jobId}/{filename}`：读取提取图片
 - `GET /api/health`：健康检查
 - `GET /api/lesson-documents`：Java 后端文档摘要列表
@@ -81,6 +82,8 @@ pnpm dev
 - `DELETE /api/lesson-documents/{documentId}`：Java 后端软删除文档
 
 任务文件写入 `data/jobs/{jobId}/`。Python 后端仍使用内存任务状态；Java 后端将任务、完整文档和资源元数据写入 MySQL，前端以 Java 服务端文档库为唯一真源。软删除仅设置数据库聚合根的删除标志，数据库明细和 `DATA_DIR/{jobId}` 文件不会物理删除。
+
+文档列表支持勾选、全选后批量下载 DOCX（ZIP）。下载前等待已有编辑保存完成，再读取服务端最新文档，沿用单篇下载的 HTML 与图片内嵌流程，无需切换当前预览。每批支持 1–20 篇，HTML 合计最多 2500 万字符，生成的 DOCX 合计最多 100 MB；重名文件自动追加编号，任一文档失败则整批报错，可保留选择重试。批量接口不修改 LessonDocument v1 协议，Python 端不实现该接口。
 
 ## 验证
 

@@ -1,6 +1,8 @@
 package com.lessonweb.lesson.controller;
 
 import com.lessonweb.lesson.model.docx.DocxExportRequest;
+import com.lessonweb.lesson.model.docx.BatchDocxExportRequest;
+import com.lessonweb.lesson.docx.BatchDocxExportService;
 import com.lessonweb.lesson.docx.HtmlToDocxService;
 import com.lessonweb.lesson.model.job.ParseJob;
 import com.lessonweb.lesson.service.DocumentParseService;
@@ -32,15 +34,18 @@ public class DocumentController {
     private final DocumentParseService parseService;
     private final TaskExecutor taskExecutor;
     private final HtmlToDocxService docxService;
+    private final BatchDocxExportService batchDocxService;
 
     public DocumentController(
             DocumentParseService parseService,
             @Qualifier("documentTaskExecutor") TaskExecutor taskExecutor,
-            HtmlToDocxService docxService
+            HtmlToDocxService docxService,
+            BatchDocxExportService batchDocxService
     ) {
         this.parseService = parseService;
         this.taskExecutor = taskExecutor;
         this.docxService = docxService;
+        this.batchDocxService = batchDocxService;
     }
 
     @PostMapping(value = "/parse", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -57,12 +62,21 @@ public class DocumentController {
 
     @PostMapping(value = "/export-docx", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<byte[]> exportDocx(@Valid @RequestBody DocxExportRequest request) {
-        HtmlToDocxService.ExportResult result = docxService.export(request.html(), request.filename());
+        HtmlToDocxService.ExportResult result = docxService.export(request.getHtml(), request.getFilename());
         String encodedFilename = UriUtils.encode(result.filename(), StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .contentType(DOCX_MEDIA_TYPE)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"lesson.docx\"; filename*=UTF-8''" + encodedFilename)
                 .body(result.content());
+    }
+
+    @PostMapping(value = "/export-docx-batch", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<byte[]> exportDocxBatch(@Valid @RequestBody BatchDocxExportRequest request) {
+        byte[] archive = batchDocxService.export(request.documents());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"lesson-documents.zip\"")
+                .body(archive);
     }
 }

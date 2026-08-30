@@ -68,7 +68,7 @@ export function useDocumentLibrary(documentId: string | undefined) {
   const saveEdits = useCallback((next: LessonDocument): Promise<void> => {
     const revision = ++saveRevisionRef.current
     setDocument(next)
-    const operation = saveQueueRef.current.then(async () => {
+    const operation = saveQueueRef.current.catch(() => {}).then(async () => {
       setLibraryError('')
       const saved = await updateLessonDocument(next)
       if (activeIdRef.current === saved.documentId && saveRevisionRef.current === revision) setDocument(saved)
@@ -77,14 +77,14 @@ export function useDocumentLibrary(documentId: string | undefined) {
     const handled = operation.catch((reason) => {
       setLibraryError(reason instanceof Error ? reason.message : '保存编辑失败')
     })
-    saveQueueRef.current = handled
+    saveQueueRef.current = operation
     return handled
   }, [refreshList])
 
   const remove = useCallback(async (id: string) => {
     setLibraryError('')
     try {
-      await saveQueueRef.current
+      await saveQueueRef.current.catch(() => {})
       await deleteLessonDocument(id)
       if (activeIdRef.current === id) setDocument(null)
       await refreshList()
@@ -103,6 +103,7 @@ export function useDocumentLibrary(documentId: string | undefined) {
     libraryError,
     adoptParsedDocument,
     saveEdits,
+    waitForSaves: () => saveQueueRef.current,
     remove,
   }
 }

@@ -74,3 +74,18 @@ export async function exportHtmlToDocx(html: string, filename: string): Promise<
   if (!response.ok) throw new Error(await parseError(response))
   return response.blob()
 }
+
+export interface DocxExportInput {
+  html: string
+  filename: string
+}
+
+export async function exportDocumentsToZip(documents: DocxExportInput[]): Promise<Blob> {
+  const response = await fetch('/api/documents/export-docx-batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documents }),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.blob()
+}

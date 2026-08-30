@@ -1,4 +1,5 @@
 import { Download, Eye, FileText, PencilLine, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import type { LessonDocumentSummary } from '../types/lesson-document'
 
 interface Props {
@@ -6,9 +7,13 @@ interface Props {
   ready?: boolean
   activeId?: string | null
   disabled?: boolean
+  batchDownloading?: boolean
+  batchStatus?: string
+  batchError?: string
   onView: (id: string) => void
   onEdit: (id: string) => void
   onDownload: (id: string) => void
+  onBatchDownload: (ids: string[]) => void
   onDelete: (id: string) => void
 }
 
@@ -28,11 +33,20 @@ export function DocumentLibrary({
   ready = true,
   activeId,
   disabled = false,
+  batchDownloading = false,
+  batchStatus = '',
+  batchError = '',
   onView,
   onEdit,
   onDownload,
+  onBatchDownload,
   onDelete,
 }: Props) {
+  const [selection, setSelection] = useState<string[]>([])
+  const selectedIds = items.filter((item) => selection.includes(item.id)).map((item) => item.id)
+  const allSelected = items.length > 0 && selectedIds.length === items.length
+  const selectionDisabled = disabled || batchDownloading
+
   return (
     <section className="document-library" aria-labelledby="library-heading">
       <div className="section-kicker">03 / 服务端文档库</div>
@@ -43,6 +57,31 @@ export function DocumentLibrary({
         </div>
         <span className="format-note">{items.length} 篇</span>
       </div>
+      {ready && items.length > 0 && (
+        <div className="library-batch-toolbar">
+          <label className="library-select-all">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(input) => { if (input) input.indeterminate = selectedIds.length > 0 && !allSelected }}
+              disabled={selectionDisabled}
+              onChange={() => setSelection(allSelected ? [] : items.map((item) => item.id))}
+            />
+            全选
+          </label>
+          <span>已选 {selectedIds.length} 篇</span>
+          <button
+            type="button"
+            disabled={selectionDisabled || selectedIds.length === 0 || selectedIds.length > 20}
+            onClick={() => onBatchDownload(selectedIds)}
+          >
+            <Download size={13} />{batchDownloading ? '打包中…' : '批量下载'}
+          </button>
+          <p className="library-batch-hint">DOCX 打包为 ZIP，每批最多 20 篇。</p>
+        </div>
+      )}
+      {batchStatus && <p className="library-batch-message" role="status">{batchStatus}</p>}
+      {batchError && <p className="library-batch-message export-error" role="alert">{batchError}</p>}
       {!ready ? (
         <p className="library-empty">正在读取服务端文档…</p>
       ) : items.length === 0 ? (
@@ -54,25 +93,37 @@ export function DocumentLibrary({
             return (
               <li key={item.id}>
                 <article className={`library-item ${active ? 'is-active' : ''}`}>
-                  <button
-                    type="button"
-                    className="library-item-main"
-                    disabled={disabled}
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => onView(item.id)}
-                  >
-                    <span className="file-mark"><FileText size={18} /></span>
-                    <span className="library-item-copy">
-                      <strong>{item.title || item.sourceFileName}</strong>
-                      <span>
-                        {item.sourceFileName}
-                        {' · '}
-                        {formatUpdatedAt(item.updatedAt)}
-                        {' · '}
-                        {item.blockCount} 个内容块
+                  <div className="library-item-heading">
+                    <input
+                      className="library-item-checkbox"
+                      type="checkbox"
+                      aria-label={`选择文档：${item.title || item.sourceFileName}`}
+                      checked={selectedIds.includes(item.id)}
+                      disabled={selectionDisabled}
+                      onChange={(event) => setSelection(event.target.checked
+                        ? [...selectedIds, item.id]
+                        : selectedIds.filter((id) => id !== item.id))}
+                    />
+                    <button
+                      type="button"
+                      className="library-item-main"
+                      disabled={disabled}
+                      aria-current={active ? 'page' : undefined}
+                      onClick={() => onView(item.id)}
+                    >
+                      <span className="file-mark"><FileText size={18} /></span>
+                      <span className="library-item-copy">
+                        <strong>{item.title || item.sourceFileName}</strong>
+                        <span>
+                          {item.sourceFileName}
+                          {' · '}
+                          {formatUpdatedAt(item.updatedAt)}
+                          {' · '}
+                          {item.blockCount} 个内容块
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                   <div className="library-item-actions">
                     <button type="button" disabled={disabled} onClick={() => onView(item.id)}>
                       <Eye size={13} />查看

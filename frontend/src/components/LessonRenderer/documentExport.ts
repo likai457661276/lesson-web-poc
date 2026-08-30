@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify'
+import type { DocxExportInput } from '../../api/documents'
 import type { LessonBlock, LessonDocument } from '../../types/lesson-document'
 
 function setClassName(element: HTMLElement, className: string) {
@@ -84,4 +85,34 @@ export function renderDocumentForExport(
 
   article.append(blocks)
   return article
+}
+
+/** Use the same markup and image embedding for single and batch exports. */
+export async function prepareDocxExport(document: LessonDocument): Promise<DocxExportInput> {
+  const root = renderDocumentForExport(document)
+  await Promise.all(Array.from(root.querySelectorAll('img')).map(async (image) => {
+    if (image.src.startsWith('data:')) return
+    const response = await fetch(image.src)
+    if (!response.ok) throw new Error(`图片资源读取失败（HTTP ${response.status}）`)
+    const blob = await response.blob()
+    image.src = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+  }))
+  // oxlint-disable-next-line no-control-regex -- Strip control characters that are invalid in filenames.
+  const safeTitle = (document.title || 'lesson').replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').slice(0, 160)
+  return { html: root.outerHTML, filename: `${safeTitle}.docx` }
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = window.document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  // Keep the temporary download URL alive until the browser has started consuming it.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

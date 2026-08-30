@@ -18,7 +18,7 @@ public class DocxExportRequest {
     public DocxExportRequest() {
     }
 
-    public String html() {
+    public String getHtml() {
         return html;
     }
 
@@ -26,7 +26,7 @@ public class DocxExportRequest {
         this.html = html;
     }
 
-    public String filename() {
+    public String getFilename() {
         return filename;
     }
 

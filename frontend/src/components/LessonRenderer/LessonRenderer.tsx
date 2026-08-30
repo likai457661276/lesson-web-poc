@@ -8,7 +8,7 @@ import { ImageBlock } from './ImageBlock'
 import { ListBlock } from './ListBlock'
 import { ParagraphBlock } from './ParagraphBlock'
 import { TableBlock } from './TableBlock'
-import { renderDocumentForExport } from './documentExport'
+import { downloadBlob, prepareDocxExport } from './documentExport'
 
 function BlockRenderer({
   block,
@@ -68,30 +68,9 @@ export function LessonRenderer({
     setExporting(true)
     setExportError('')
     try {
-      const exportDocument = draftRef.current
-      const exportRoot = renderDocumentForExport(exportDocument)
-      await Promise.all(Array.from(exportRoot.querySelectorAll('img')).map(async (image) => {
-        if (image.src.startsWith('data:')) return
-        const response = await fetch(image.src)
-        if (!response.ok) throw new Error(`图片资源读取失败（HTTP ${response.status}）`)
-        const blob = await response.blob()
-        image.src = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(String(reader.result))
-          reader.onerror = () => reject(reader.error)
-          reader.readAsDataURL(blob)
-        })
-      }))
-      const exportedTitle = exportDocument.title || 'lesson'
-      const safeTitle = exportedTitle.replace(/[<>:"/\\|?*]/g, '_')
-      const filename = `${safeTitle}.docx`
-      const blob = await exportHtmlToDocx(exportRoot.outerHTML, filename)
-      const url = URL.createObjectURL(blob)
-      const anchor = window.document.createElement('a')
-      anchor.href = url
-      anchor.download = filename
-      anchor.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      const { html, filename } = await prepareDocxExport(draftRef.current)
+      const blob = await exportHtmlToDocx(html, filename)
+      downloadBlob(blob, filename)
     } catch (reason) {
       setExportError(reason instanceof Error ? reason.message : 'DOCX 导出失败')
     } finally {

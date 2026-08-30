@@ -1,10 +1,11 @@
 import { AlertCircle, Check, FileSearch, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useMatch, useNavigate, useParams } from 'react-router-dom'
-import { getParseJob, parseDocument } from '../api/documents'
+import { exportDocumentsToZip, getLessonDocument, getParseJob, parseDocument, type DocxExportInput } from '../api/documents'
 import { DocumentLibrary } from '../components/DocumentLibrary'
 import { DocumentUploader } from '../components/DocumentUploader'
 import { LessonRenderer, type LessonRendererHandle } from '../components/LessonRenderer/LessonRenderer'
+import { downloadBlob, prepareDocxExport } from '../components/LessonRenderer/documentExport'
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary'
 import type { ParseJob } from '../types/lesson-document'
 
@@ -22,6 +23,10 @@ export function HomePage() {
   const [file, setFile] = useState<File | null>(null)
   const [job, setJob] = useState<ParseJob | null>(null)
   const [error, setError] = useState('')
+  const [batchDownloading, setBatchDownloading] = useState(false)
+  const [batchStatus, setBatchStatus] = useState('')
+  const [batchError, setBatchError] = useState('')
+  const batchDownloadRef = useRef(false)
   const rendererRef = useRef<LessonRendererHandle>(null)
   const completedJobIds = useRef(new Set<string>())
   const pendingDownloadIdRef = useRef<string | null>(null)
@@ -33,6 +38,7 @@ export function HomePage() {
     libraryError,
     adoptParsedDocument,
     saveEdits,
+    waitForSaves,
     remove,
   } = useDocumentLibrary(documentId)
   const busy = job?.status === 'pending' || job?.status === 'processing'
@@ -114,6 +120,34 @@ export function HomePage() {
     }
   }
 
+  const downloadSelectedDocuments = async (ids: string[]) => {
+    if (batchDownloadRef.current || ids.length === 0 || ids.length > 20) return
+    batchDownloadRef.current = true
+    setBatchDownloading(true)
+    setBatchError('')
+    setBatchStatus('正在等待编辑保存…')
+    try {
+      await waitForSaves()
+      const documents: DocxExportInput[] = []
+      // Read persisted content without navigating away from the current document.
+      for (const [index, id] of ids.entries()) {
+        setBatchStatus(`正在准备文档 ${index + 1}/${ids.length}…`)
+        const document = await getLessonDocument(id)
+        documents.push(await prepareDocxExport(document))
+      }
+      setBatchStatus(`正在生成 ${ids.length} 篇 DOCX 并打包…`)
+      const archive = await exportDocumentsToZip(documents)
+      downloadBlob(archive, 'lesson-documents.zip')
+      setBatchStatus(`已生成 ${ids.length} 篇文档的 ZIP，已开始下载。`)
+    } catch (reason) {
+      setBatchStatus('')
+      setBatchError(reason instanceof Error ? reason.message : '批量下载失败，请重试')
+    } finally {
+      batchDownloadRef.current = false
+      setBatchDownloading(false)
+    }
+  }
+
   return (
     <main>
       <header className="app-header">
@@ -133,7 +167,7 @@ export function HomePage() {
           </div>
           <DocumentUploader
             file={file}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || batchDownloading}
             onFile={selectFile}
             onClear={() => { setFile(null); setJob(null); setError('') }}
             onSubmit={() => void submit()}
@@ -165,10 +199,14 @@ export function HomePage() {
             items={items}
             ready={listReady}
             activeId={documentId}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || batchDownloading}
+            batchDownloading={batchDownloading}
+            batchStatus={batchStatus}
+            batchError={batchError}
             onView={(id) => openDocument(id)}
             onEdit={(id) => openDocument(id, 'edit')}
             onDownload={downloadDocument}
+            onBatchDownload={(ids) => void downloadSelectedDocuments(ids)}
             onDelete={(id) => void deleteDocument(id)}
           />
 
