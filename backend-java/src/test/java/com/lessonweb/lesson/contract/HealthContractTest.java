@@ -19,7 +19,7 @@ class HealthContractTest extends MySqlContractTest {
     private MockMvc mockMvc;
 
     @Test
-    void healthMatchesPythonContract() throws Exception {
+    void healthMatchesApiContract() throws Exception {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))

@@ -10,4 +10,4 @@
 
 The Java DOCX exporter uses Apache FontBox to create document-specific Regular and Bold subsets, including automatic numbering characters, and embeds them using the OOXML obfuscated-font format. It retains Unicode mapping, font names, metrics, outlines and hinting; full-font GSUB/GPOS tables are not copied with invalid glyph references. Chinese/Latin horizontal text is the supported layout. Formula layout remains editable OMML using Cambria Math.
 
-The Java service and its build use only the Java stack: no Python process, Python service or fontTools runtime dependency. Subsets omit unused characters; later edits in Word may use the viewer's installed fallback fonts for newly typed characters.
+The Java service and its build use only the Java stack; fontTools is not a runtime dependency. Subsets omit unused characters; later edits in Word may use the viewer's installed fallback fonts for newly typed characters.

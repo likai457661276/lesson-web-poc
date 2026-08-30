@@ -35,7 +35,7 @@ class DocumentContractTest extends MySqlContractTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void parseAndGetUsePythonFieldNamesAndStatuses() throws Exception {
+    void parseAndGetUseApiFieldNamesAndStatuses() throws Exception {
         var file = new MockMultipartFile("file", "课程.pdf", "application/pdf", "%PDF-1.7 fake".getBytes());
         String body = mockMvc.perform(multipart("/api/documents/parse").file(file))
                 .andExpect(status().isAccepted())

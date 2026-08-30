@@ -1,6 +1,6 @@
 # Lesson Web PoC Frontend
 
-React + Vite + TypeScript 单页应用。页面只消费 `LessonDocument v1`，不读取 MinerU 原始结果；默认连接 Java 后端 `10012`，通过 `frontend/.env.local` 中的 `VITE_API_PROXY_TARGET` 配置代理。服务端文档库仅由 Java 提供，Python 后端不提供文档库接口。
+React + Vite + TypeScript 单页应用。页面只消费 `LessonDocument v1`，不读取 MinerU 原始结果；默认连接 Java 后端 `10012`，通过 `frontend/.env.local` 中的 `VITE_API_PROXY_TARGET` 配置代理。服务端文档库由 Java 后端提供。
 
 ```bash
 pnpm install --frozen-lockfile

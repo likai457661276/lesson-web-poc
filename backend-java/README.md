@@ -1,6 +1,6 @@
 # Lesson Web PoC Java Backend
 
-Java 17 + Spring Boot 2.6.4 后端。当前已实现上传落盘、MinerU 解析链路、ZIP 提取、资源读取、`LessonDocument v1` 转换、MySQL 服务端文档库，以及基于 Jsoup + docx4j 的 DOCX 导出。它与 `../backend/` 共享解析 API 契约；Java 默认监听 `10012`，Python 默认监听 `10011`，可同时启动。
+Java 17 + Spring Boot 2.6.4 后端。当前已实现上传落盘、MinerU 解析链路、ZIP 提取、资源读取、`LessonDocument v1` 转换、MySQL 服务端文档库，以及基于 Jsoup + docx4j 的 DOCX 导出。服务默认监听 `10012`。
 
 DOCX 导出支持语义标题、段落与行内样式、嵌套列表、`rowspan`/`colspan` 表格、data URL 图片、可编辑 OMML 公式及 Noto Sans SC 字体嵌入。
 
@@ -62,8 +62,8 @@ MySQL 使用命名 volume 保存数据，Compose 只运行数据库，不包含 
 
 ## 实现说明
 
-- 公式接口使用 Symja 解析与符号化简；当前 Golden Matrix 与 Python SymPy 基准行为一致。
-- DOCX 字体由纯 Java 的 FontBox 按文档字符生成 Regular/Bold 子集，并保留自动编号字符；字体资源为预置 Noto Sans SC 静态 TTF，构建和运行均不依赖 Python。子集省略未用字形，Word 中新增字符可能使用本机回退字体。字体来源、校验值和许可见 `src/main/resources/fonts/README.md`。
+- 公式接口使用 Symja 解析与符号化简。
+- DOCX 字体由纯 Java 的 FontBox 按文档字符生成 Regular/Bold 子集，并保留自动编号字符；字体资源为预置 Noto Sans SC 静态 TTF。子集省略未用字形，Word 中新增字符可能使用本机回退字体。字体来源、校验值和许可见 `src/main/resources/fonts/README.md`。
 - DOCX 表格正文顶端对齐、表头居中，按整列内容量分配宽度，允许长行跨页；不使用样例特判，不改变单元格之间的行对应关系。
 - MinerU 的 TLS、连接、超时和传输错误在客户端边界归类为 `MINERU_PARSE_FAILED`，错误消息包含失败阶段，不包含签名 URL。
 - DOCX 表格在展开前校验：最多 2000 行、100 列、10000 个展开单元格，超限返回 `413 / TABLE_TOO_LARGE`，非法跨度返回 `422 / INVALID_TABLE_SPAN`。

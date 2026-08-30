@@ -11,7 +11,7 @@ class FormulaValidationServiceTest {
     private final FormulaValidationService service = new FormulaValidationService();
 
     @Test
-    void normalizesSameCharactersAsPythonReference() {
+    void normalizesExpectedCharacters() {
         assertThat(service.normalizeLatex(" $x−1≤90°$ ")).isEqualTo("x-1\\leq 90^{\\circ}");
     }
 
@@ -46,7 +46,7 @@ class FormulaValidationServiceTest {
     }
 
     @Test
-    void matchesPythonGoldenReferenceMatrix() {
+    void matchesGoldenReferenceMatrix() {
         GoldenCase[] cases = {
                 new GoldenCase("x^2+2x+1", null, true, null),
                 new GoldenCase("\\frac{x+1}{2}", null, true, null),

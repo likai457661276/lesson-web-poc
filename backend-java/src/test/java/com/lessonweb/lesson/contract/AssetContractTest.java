@@ -33,7 +33,7 @@ class AssetContractTest extends MySqlContractTest {
     private LessonDocumentLibraryService documents;
 
     @Test
-    void unavailableAssetMatchesPythonErrorContract() throws Exception {
+    void unavailableAssetMatchesApiErrorContract() throws Exception {
         mockMvc.perform(get("/api/assets/{jobId}/{filename}",
                         "00000000-0000-0000-0000-000000000000", "图片.png"))
                 .andExpect(status().isNotFound())
