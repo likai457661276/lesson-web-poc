@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -60,6 +63,35 @@ public class AssetStorageService {
     public Path getAsset(String jobId, String filename) {
         return storage.resolveAsset(jobId, filename);
     }
+
+    public List<StoredAsset> describeAssets(String jobId) {
+        Path assetsDir = storage.jobDir(jobId).resolve("assets");
+        if (!Files.isDirectory(assetsDir)) return List.of();
+        try (Stream<Path> paths = Files.list(assetsDir)) {
+            return paths.filter(Files::isRegularFile).sorted().map(path -> describe(jobId, path)).toList();
+        } catch (IOException exception) {
+            throw new IllegalStateException("资源元数据读取失败", exception);
+        }
+    }
+
+    private StoredAsset describe(String jobId, Path path) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (var input = Files.newInputStream(path)) {
+                input.transferTo(new java.io.OutputStream() {
+                    @Override public void write(int value) { digest.update((byte) value); }
+                    @Override public void write(byte[] value, int offset, int length) { digest.update(value, offset, length); }
+                });
+            }
+            String name = path.getFileName().toString();
+            return new StoredAsset("/api/assets/" + jobId + "/" + name, "assets/" + name,
+                    Files.probeContentType(path), Files.size(path), HexFormat.of().formatHex(digest.digest()));
+        } catch (IOException | NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("资源元数据读取失败", exception);
+        }
+    }
+
+    public record StoredAsset(String src, String relativePath, String contentType, long sizeBytes, String sha256) {}
 
     private String extensionOf(Path path) {
         String name = path.getFileName().toString();

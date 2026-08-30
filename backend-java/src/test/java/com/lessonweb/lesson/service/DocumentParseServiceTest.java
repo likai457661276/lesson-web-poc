@@ -5,6 +5,8 @@ import com.lessonweb.lesson.adapter.MineruLessonDocumentAdapter;
 import com.lessonweb.lesson.config.LessonProperties;
 import com.lessonweb.lesson.exception.MineruException;
 import com.lessonweb.lesson.model.job.JobStatus;
+import com.lessonweb.lesson.model.job.ParseJob;
+import com.lessonweb.lesson.model.job.ErrorDetail;
 import com.lessonweb.lesson.parser.MineruDocumentParser;
 import com.lessonweb.lesson.parser.MineruParseResult;
 import com.lessonweb.lesson.storage.AssetStorageService;
@@ -16,10 +18,14 @@ import org.springframework.util.unit.DataSize;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -29,10 +35,10 @@ class DocumentParseServiceTest {
     Path tempDir;
 
     @Test
-    void completesTaskAndPersistsProviderAndLessonDocuments() throws Exception {
+    void completesTaskAndPersistsProviderResultWithoutDocumentFileCache() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         LocalStorage storage = storage(objectMapper);
-        ParseJobService jobs = new ParseJobService();
+        ParseJobService jobs = jobService();
         MineruDocumentParser parser = mock(MineruDocumentParser.class);
         Path resultDir = tempDir.resolve("provider-result");
         Files.createDirectories(resultDir.resolve("images"));
@@ -58,7 +64,7 @@ class DocumentParseServiceTest {
         assertThat(completed.document().blocks()).extracting(block -> block.type())
                 .containsExactly("heading", "image");
         assertThat(storage.jobDir(completed.jobId()).resolve("mineru-result.json")).isRegularFile();
-        assertThat(storage.jobDir(completed.jobId()).resolve("lesson-document.json")).isRegularFile();
+        assertThat(storage.jobDir(completed.jobId()).resolve("lesson-document.json")).doesNotExist();
         assertThat(completed.document().blocks().get(1).toString()).contains("/api/assets/");
     }
 
@@ -66,7 +72,7 @@ class DocumentParseServiceTest {
     void recordsProviderFailureWithoutLeakingExceptionToExecutor() {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         LocalStorage storage = storage(objectMapper);
-        ParseJobService jobs = new ParseJobService();
+        ParseJobService jobs = jobService();
         MineruDocumentParser parser = mock(MineruDocumentParser.class);
         when(parser.parse(any(Path.class))).thenThrow(new MineruException("上游失败"));
         DocumentParseService service = service(storage, jobs, parser);
@@ -83,7 +89,7 @@ class DocumentParseServiceTest {
 
     @Test
     void rejectsNonPdfFilesAndInvalidPdfContent() {
-        DocumentParseService service = service(storage(new ObjectMapper()), new ParseJobService(), mock(MineruDocumentParser.class));
+        DocumentParseService service = service(storage(new ObjectMapper()), jobService(), mock(MineruDocumentParser.class));
 
         assertThatThrownBy(() -> service.createJob(new MockMultipartFile(
                 "file", "lesson.png", "image/png", "image".getBytes())))
@@ -107,6 +113,40 @@ class DocumentParseServiceTest {
 
     private LocalStorage storage(ObjectMapper objectMapper) {
         return new LocalStorage(properties(), objectMapper);
+    }
+
+    private ParseJobService jobService() {
+        ParseJobService jobs = mock(ParseJobService.class);
+        AtomicReference<ParseJob> state = new AtomicReference<>();
+        when(jobs.create(anyString(), anyString())).thenAnswer(invocation -> {
+            ParseJob job = new ParseJob(invocation.getArgument(0), JobStatus.PENDING,
+                    invocation.getArgument(1), Instant.now(), null, null);
+            state.set(job);
+            return job;
+        });
+        when(jobs.processing(anyString())).thenAnswer(invocation -> {
+            ParseJob current = state.get();
+            ParseJob next = new ParseJob(current.jobId(), JobStatus.PROCESSING, current.sourceFileName(),
+                    current.createdAt(), null, null);
+            state.set(next);
+            return next;
+        });
+        when(jobs.success(anyString(), any(), anyList())).thenAnswer(invocation -> {
+            ParseJob current = state.get();
+            ParseJob next = new ParseJob(current.jobId(), JobStatus.COMPLETED, current.sourceFileName(),
+                    current.createdAt(), invocation.getArgument(1), null);
+            state.set(next);
+            return next;
+        });
+        when(jobs.fail(anyString(), anyString(), anyString())).thenAnswer(invocation -> {
+            ParseJob current = state.get();
+            ParseJob next = new ParseJob(current.jobId(), JobStatus.FAILED, current.sourceFileName(),
+                    current.createdAt(), null, new ErrorDetail(invocation.getArgument(1), invocation.getArgument(2)));
+            state.set(next);
+            return next;
+        });
+        when(jobs.get(anyString())).thenAnswer(invocation -> state.get());
+        return jobs;
     }
 
     private LessonProperties properties() {

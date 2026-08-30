@@ -1,6 +1,25 @@
 spring:
   application:
     name: lesson-web-poc-java
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:lesson_web}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:lesson_web}
+    password: ${DB_PASSWORD:}
+    druid:
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      max-wait: 60000
+      validation-query: SELECT 1 FROM DUAL
+      test-while-idle: true
+      stat-view-servlet:
+        enabled: false
+      web-stat-filter:
+        enabled: false
+  flyway:
+    enabled: true
   servlet:
     multipart:
       max-file-size: 200MB
@@ -25,3 +44,8 @@ mineru:
 logging:
   level:
     edu.jas: WARN
+
+mybatis-plus:
+  mapper-locations: classpath:/mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true

@@ -2,13 +2,13 @@
 
 ## 项目边界
 
-本项目只验证“文件上传 → MinerU → LessonDocument v1 → Web 渲染”。提供 Python 与 Java 两套等价后端实现；不引入数据库、用户系统、消息队列或 RAG。
+本项目验证“文件上传 → MinerU → LessonDocument v1 → Web 渲染”。提供 Python 与 Java 两套解析实现；Java 后端额外提供 MySQL 服务端文档库。当前不引入用户系统、消息队列或 RAG。
 
 ## 技术环境
 
 - 前端：React、TypeScript、Vite、React Router；Node 与 pnpm 版本以 `frontend/package.json` 的 `volta` 字段为准。
 - Python 后端：Python 3.12、FastAPI、uv；Python 包统一使用阿里云 PyPI 源。本地开发和测试统一使用 `uv`，Docker 仅保留单一 `backend/docker-compose.yml`。
-- Java 后端：Java 17、Spring Boot、项目内 Maven Wrapper；JDK 版本以 `backend-java/pom.xml` 为准，存在 `.sdkmanrc` 时使用 SDKMAN 激活。构建前核验工具链。本地运行必须使用 `backend-java/run-local.sh`，不得直接执行 `./mvnw spring-boot:run`；该脚本负责加载 `backend-java/.env`、校验 `MINERU_API_KEY` 并激活项目 Java 环境。
+- Java 后端：Java 17、Spring Boot 2.6.4、MySQL 8.0.33、MyBatis-Plus 3.5.4.1、MyBatis XML 与 Druid 1.2.8；项目内 Maven Wrapper。JDK 版本以 `backend-java/pom.xml` 为准，存在 `.sdkmanrc` 时使用 SDKMAN 激活。构建前核验工具链。本地运行必须使用 `backend-java/run-local.sh`，不得直接执行 `./mvnw spring-boot:run`；该脚本负责加载 `backend-java/.env`、校验 `MINERU_API_KEY` 与 `DB_PASSWORD` 并激活项目 Java 环境。MySQL 通过 `backend-java/docker-compose.yml` 单独运行，不容器化 Java 服务。
 - 前端包统一使用 `frontend/.npmrc` 中的镜像源。
 - 密钥只能从环境变量读取，禁止写入源码、日志、示例或提交记录。
 
@@ -18,6 +18,7 @@
 - Python Provider 调用放在 `backend/app/parsers/`，结果转换放在 `backend/app/adapters/`；Java 分别位于 `backend-java/.../parser/`、`client/` 与 `adapter/`。
 - 两套 API 路由/Controller 保持轻量，流程编排分别放在 Python `services/` 与 Java `service/`。
 - Python 与 Java 后端共享 API 和 `LessonDocument v1` 契约；默认端口分别为 10011 和 10012，可同时运行。前端默认代理到 Java 后端 `http://127.0.0.1:10012`，通过 `frontend/.env.local` 中的 `VITE_API_PROXY_TARGET` 配置；如需切换到 Python 后端，必须显式修改该配置并重启前端。
+- Java 后端使用 Flyway 管理文档库表结构，数据库保存解析任务、`LessonDocument v1` 和资源元数据；PDF、MinerU 原始结果及图片仍保存于 `DATA_DIR`。前端不得使用 IndexedDB 或 Blob 缓存，服务端数据库是文档内容的唯一真源。
 - PoC 只支持 heading、paragraph、list、table、image、formula 六类内容块。
 - 变更协议时必须同步两套后端模型、前端类型、契约测试和 `docs/LESSON_DOCUMENT_V1.md`。
 

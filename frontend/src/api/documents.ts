@@ -1,4 +1,4 @@
-import type { ParseJob } from '../types/lesson-document'
+import type { LessonDocument, LessonDocumentSummary, ParseJob } from '../types/lesson-document'
 
 export interface FormulaValidationResult {
   latex: string
@@ -26,6 +26,33 @@ export async function getParseJob(jobId: string): Promise<ParseJob> {
   const response = await fetch(`/api/documents/${jobId}`)
   if (!response.ok) throw new Error(await parseError(response))
   return response.json()
+}
+
+export async function listLessonDocuments(): Promise<LessonDocumentSummary[]> {
+  const response = await fetch('/api/lesson-documents')
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function getLessonDocument(id: string): Promise<LessonDocument> {
+  const response = await fetch(`/api/lesson-documents/${id}`)
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function updateLessonDocument(document: LessonDocument): Promise<LessonDocument> {
+  const response = await fetch(`/api/lesson-documents/${document.documentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(document),
+  })
+  if (!response.ok) throw new Error(await parseError(response))
+  return response.json()
+}
+
+export async function deleteLessonDocument(id: string): Promise<void> {
+  const response = await fetch(`/api/lesson-documents/${id}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await parseError(response))
 }
 
 export async function validateFormula(latex: string): Promise<FormulaValidationResult> {

@@ -68,8 +68,7 @@ public class DocumentParseService {
             storage.saveProviderResult(jobId, raw);
             Map<String, String> assetUrls = assets.collectMineruAssets(jobId, raw.resultDir());
             LessonDocument document = adapter.convert(raw, jobId, job.sourceFileName(), assetUrls);
-            storage.saveDocument(jobId, document);
-            jobs.success(jobId, document);
+            jobs.success(jobId, document, assets.describeAssets(jobId));
             LOGGER.info("document_parse_completed jobId={} fileName={} durationMs={} blockCount={}",
                     jobId, job.sourceFileName(), Duration.between(startedAt, Instant.now()).toMillis(),
                     document.blocks().size());

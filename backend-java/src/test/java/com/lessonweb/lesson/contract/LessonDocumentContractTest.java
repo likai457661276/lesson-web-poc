@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
-class LessonDocumentContractTest {
+class LessonDocumentContractTest extends MySqlContractTest {
 
     @Autowired
     private ObjectMapper objectMapper;

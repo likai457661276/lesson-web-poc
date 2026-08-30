@@ -9,7 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -32,9 +32,9 @@ class MineruClientTest {
 
     @Test
     void executesCreatePollAndDownloadProtocol() throws Exception {
-        RestClient.Builder builder = RestClient.builder();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        MineruClient client = new MineruClient(builder.build(), new ObjectMapper(), properties("token"));
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        MineruClient client = new MineruClient(restTemplate, new ObjectMapper(), properties("token"));
         server.expect(requestTo("https://mineru.test/api/v4/file-urls/batch"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer token"))
@@ -78,7 +78,7 @@ class MineruClientTest {
         try {
             Path file = tempDir.resolve("source.pdf");
             Files.write(file, "pdf".getBytes());
-            MineruClient client = new MineruClient(RestClient.create(), new ObjectMapper(), properties("token"));
+            MineruClient client = new MineruClient(new RestTemplate(), new ObjectMapper(), properties("token"));
 
             client.uploadFile("http://127.0.0.1:" + server.getAddress().getPort() + "/upload", file);
 
@@ -90,7 +90,7 @@ class MineruClientTest {
 
     @Test
     void rejectsMissingApiKeyBeforeNetworkCall() {
-        MineruClient client = new MineruClient(RestClient.create(), new ObjectMapper(), properties(""));
+        MineruClient client = new MineruClient(new RestTemplate(), new ObjectMapper(), properties(""));
 
         assertThatThrownBy(() -> client.createUpload("source.pdf"))
                 .isInstanceOf(MineruException.class)

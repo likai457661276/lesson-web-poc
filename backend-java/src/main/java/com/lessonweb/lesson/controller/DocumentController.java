@@ -4,7 +4,7 @@ import com.lessonweb.lesson.model.docx.DocxExportRequest;
 import com.lessonweb.lesson.docx.HtmlToDocxService;
 import com.lessonweb.lesson.model.job.ParseJob;
 import com.lessonweb.lesson.service.DocumentParseService;
-import jakarta.validation.Valid;
+import javax.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;

@@ -26,3 +26,13 @@ export interface ParseJob {
   document?: LessonDocument | null
   error?: { code: string; message: string } | null
 }
+
+export interface LessonDocumentSummary {
+  id: string
+  title: string
+  sourceFileName: string
+  sourceType: string
+  blockCount: number
+  createdAt: string
+  updatedAt: string
+}

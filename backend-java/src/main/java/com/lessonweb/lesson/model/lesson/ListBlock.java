@@ -1,6 +1,6 @@
 package com.lessonweb.lesson.model.lesson;
 
-import jakarta.validation.constraints.NotNull;
+import javax.validation.constraints.NotNull;
 
 import java.util.List;
 

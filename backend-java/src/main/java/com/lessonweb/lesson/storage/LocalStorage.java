@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lessonweb.lesson.config.LessonProperties;
 import com.lessonweb.lesson.exception.AppException;
-import com.lessonweb.lesson.model.lesson.LessonDocument;
 import com.lessonweb.lesson.parser.MineruParseResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -82,10 +81,6 @@ public class LocalStorage {
         payload.set("content_list", result.contentList());
         payload.set("ocr_layout", result.ocrLayout());
         writeJson(jobDir(jobId).resolve("mineru-result.json"), payload);
-    }
-
-    public void saveDocument(String jobId, LessonDocument document) {
-        writeJson(jobDir(jobId).resolve("lesson-document.json"), document);
     }
 
     public Path resolveAsset(String jobId, String filename) {

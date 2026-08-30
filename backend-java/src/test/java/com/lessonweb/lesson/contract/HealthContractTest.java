@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = LessonApplication.class)
 @AutoConfigureMockMvc
-class HealthContractTest {
+class HealthContractTest extends MySqlContractTest {
 
     @Autowired
     private MockMvc mockMvc;

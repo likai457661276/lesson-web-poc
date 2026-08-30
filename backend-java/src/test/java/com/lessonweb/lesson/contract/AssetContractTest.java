@@ -2,10 +2,12 @@ package com.lessonweb.lesson.contract;
 
 import com.lessonweb.lesson.LessonApplication;
 import com.lessonweb.lesson.storage.LocalStorage;
+import com.lessonweb.lesson.service.LessonDocumentLibraryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.file.Files;
@@ -19,13 +21,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = LessonApplication.class)
 @AutoConfigureMockMvc
-class AssetContractTest {
+class AssetContractTest extends MySqlContractTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private LocalStorage storage;
+
+    @MockBean
+    private LessonDocumentLibraryService documents;
 
     @Test
     void unavailableAssetMatchesPythonErrorContract() throws Exception {

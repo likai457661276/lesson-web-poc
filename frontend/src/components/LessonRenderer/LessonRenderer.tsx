@@ -2,7 +2,6 @@ import { Check, Download, PencilLine } from 'lucide-react'
 import { useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { exportHtmlToDocx } from '../../api/documents'
 import type { LessonBlock, LessonDocument } from '../../types/lesson-document'
-import { AssetUrlContext } from './assetUrlContext'
 import { FormulaBlock } from './FormulaBlock'
 import { HeadingBlock } from './HeadingBlock'
 import { ImageBlock } from './ImageBlock'
@@ -36,16 +35,12 @@ export type LessonRendererHandle = {
 
 export function LessonRenderer({
   document,
-  assetUrls = {},
-  assetsReady = true,
   editable = false,
   onEditableChange,
   onDocumentChange,
   ref,
 }: {
   document: LessonDocument
-  assetUrls?: Readonly<Record<string, string>>
-  assetsReady?: boolean
   editable?: boolean
   onEditableChange?: (editable: boolean) => void
   onDocumentChange?: (document: LessonDocument) => void | Promise<void>
@@ -69,12 +64,12 @@ export function LessonRenderer({
   }
 
   const downloadDocx = async () => {
-    if (exporting || !assetsReady) return
+    if (exporting) return
     setExporting(true)
     setExportError('')
     try {
       const exportDocument = draftRef.current
-      const exportRoot = renderDocumentForExport(exportDocument, assetUrls)
+      const exportRoot = renderDocumentForExport(exportDocument)
       await Promise.all(Array.from(exportRoot.querySelectorAll('img')).map(async (image) => {
         if (image.src.startsWith('data:')) return
         const response = await fetch(image.src)
@@ -107,13 +102,12 @@ export function LessonRenderer({
   useImperativeHandle(ref, () => ({ downloadDocx }))
 
   return (
-    <AssetUrlContext.Provider value={assetUrls}>
-      <article className={`lesson-document ${editable ? 'is-editing' : ''}`}>
+    <article className={`lesson-document ${editable ? 'is-editing' : ''}`}>
         <div className="document-edit-toolbar">
-          <span className={exportError ? 'export-error' : ''}>{exportError || (editable ? '编辑模式：点击文字或表格单元格即可修改，离开后会写入本机缓存' : '内容可在浏览器内基础编辑并导出；结果保存在本机')}</span>
+          <span className={exportError ? 'export-error' : ''}>{exportError || (editable ? '编辑模式：点击文字或表格单元格即可修改，离开后会保存到服务端' : '内容可在浏览器内基础编辑并导出；结果保存在服务端')}</span>
           <div className="document-toolbar-actions">
-            <button className="export-button" type="button" disabled={exporting || !assetsReady} onClick={() => void downloadDocx()}>
-              <Download size={15} />{exporting ? '生成中…' : assetsReady ? '下载 DOCX' : '准备资源…'}
+            <button className="export-button" type="button" disabled={exporting} onClick={() => void downloadDocx()}>
+              <Download size={15} />{exporting ? '生成中…' : '下载 DOCX'}
             </button>
             <button
               className="edit-button"
@@ -152,7 +146,6 @@ export function LessonRenderer({
             </div>
           ))}
         </div>
-      </article>
-    </AssetUrlContext.Provider>
+    </article>
   )
 }

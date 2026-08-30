@@ -2,7 +2,6 @@ import DOMPurify from 'dompurify'
 import parse, { attributesToProps, domToReact, Element, type DOMNode, type HTMLReactParserOptions } from 'html-react-parser'
 import { useRef } from 'react'
 import type { TableBlock as Table } from '../../types/lesson-document'
-import { useAssetUrl } from './assetUrlContext'
 import { EditableFormula } from './EditableFormula'
 
 function serializeEditedTable(table: HTMLTableElement): string {
@@ -19,11 +18,6 @@ function serializeEditedTable(table: HTMLTableElement): string {
     if (!node.className.trim()) node.removeAttribute('class')
   })
   return clone.outerHTML
-}
-
-function TableImage({ src, alt, className }: { src: string; alt?: string; className?: string }) {
-  const resolved = useAssetUrl(src)
-  return <img src={resolved} alt={alt} className={className} />
 }
 
 export function TableBlock({
@@ -57,7 +51,7 @@ export function TableBlock({
       }
       if (node instanceof Element && node.name === 'img') {
         return (
-          <TableImage
+          <img
             src={node.attribs.src ?? ''}
             alt={node.attribs.alt}
             className={node.attribs.class}

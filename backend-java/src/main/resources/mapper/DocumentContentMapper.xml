@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lessonweb.lesson.persistence.mapper.DocumentContentMapper">
+  <select id="selectActiveById" resultType="com.lessonweb.lesson.persistence.entity.DocumentContentEntity">
+    SELECT c.* FROM lesson_document_content c
+    INNER JOIN lesson_document_conversion j ON j.id = c.conversion_id
+    WHERE c.id = #{id} AND j.del_flag = '0' AND j.status = 2
+  </select>
+  <select id="selectActiveSummaries" resultType="com.lessonweb.lesson.persistence.entity.DocumentSummaryRow">
+    SELECT c.id, c.title, c.source_file_name AS sourceFileName, c.source_type AS sourceType,
+           c.block_count AS blockCount, c.created_at AS createdAt, c.updated_at AS updatedAt
+    FROM lesson_document_content c
+    INNER JOIN lesson_document_conversion j ON j.id = c.conversion_id
+    WHERE j.del_flag = '0' AND j.status = 2
+    ORDER BY c.updated_at DESC
+  </select>
+  <update id="updateActive" parameterType="com.lessonweb.lesson.persistence.entity.DocumentContentEntity">
+    UPDATE lesson_document_content c
+    INNER JOIN lesson_document_conversion j ON j.id = c.conversion_id
+    SET c.version = #{version}, c.title = #{title}, c.source_type = #{sourceType},
+        c.source_file_name = #{sourceFileName}, c.block_count = #{blockCount},
+        c.content_json = #{contentJson}, c.updated_at = #{updatedAt}
+    WHERE c.id = #{id} AND j.del_flag = '0' AND j.status = 2
+  </update>
+</mapper>

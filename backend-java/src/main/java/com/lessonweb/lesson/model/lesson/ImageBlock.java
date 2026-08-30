@@ -1,6 +1,6 @@
 package com.lessonweb.lesson.model.lesson;
 
-import jakarta.validation.constraints.NotNull;
+import javax.validation.constraints.NotNull;
 
 public record ImageBlock(@NotNull String id, @NotNull String src, String alt) implements DocumentBlock {
 

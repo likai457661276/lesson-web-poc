@@ -1,8 +1,8 @@
 import { Download, Eye, FileText, PencilLine, Trash2 } from 'lucide-react'
-import type { CachedDocumentSummary } from '../storage/documentCache'
+import type { LessonDocumentSummary } from '../types/lesson-document'
 
 interface Props {
-  items: CachedDocumentSummary[]
+  items: LessonDocumentSummary[]
   ready?: boolean
   activeId?: string | null
   disabled?: boolean
@@ -12,7 +12,7 @@ interface Props {
   onDelete: (id: string) => void
 }
 
-function formatCachedAt(value: string) {
+function formatUpdatedAt(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat('zh-CN', {
@@ -35,18 +35,18 @@ export function DocumentLibrary({
 }: Props) {
   return (
     <section className="document-library" aria-labelledby="library-heading">
-      <div className="section-kicker">03 / 本机缓存</div>
+      <div className="section-kicker">03 / 服务端文档库</div>
       <div className="section-heading-row">
         <div>
           <h2 id="library-heading">文档列表</h2>
-          <p>解析完成的 LessonDocument 保存在当前浏览器，刷新后仍可打开。</p>
+          <p>解析和编辑结果保存在服务端数据库，刷新或更换浏览器后仍可打开。</p>
         </div>
         <span className="format-note">{items.length} 篇</span>
       </div>
       {!ready ? (
-        <p className="library-empty">正在读取本机文档…</p>
+        <p className="library-empty">正在读取服务端文档…</p>
       ) : items.length === 0 ? (
-        <p className="library-empty">暂无缓存文档。完成一次解析后会出现在这里。</p>
+        <p className="library-empty">暂无文档。完成一次解析后会出现在这里。</p>
       ) : (
         <ul className="library-list">
           {items.map((item) => {
@@ -67,7 +67,7 @@ export function DocumentLibrary({
                       <span>
                         {item.sourceFileName}
                         {' · '}
-                        {formatCachedAt(item.updatedAt)}
+                        {formatUpdatedAt(item.updatedAt)}
                         {' · '}
                         {item.blockCount} 个内容块
                       </span>

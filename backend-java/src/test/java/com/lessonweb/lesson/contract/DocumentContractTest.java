@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = LessonApplication.class)
 @AutoConfigureMockMvc
-class DocumentContractTest {
+class DocumentContractTest extends MySqlContractTest {
 
     private static final String DOCX_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

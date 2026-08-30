@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = LessonApplication.class)
 @AutoConfigureMockMvc
-class FormulaContractTest {
+class FormulaContractTest extends MySqlContractTest {
 
     @Autowired
     private MockMvc mockMvc;

@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lessonweb.lesson.config.MineruProperties;
 import com.lessonweb.lesson.exception.MineruException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.net.URI;
@@ -22,13 +25,13 @@ import java.util.Map;
 @Component
 public class MineruClient {
 
-    private final RestClient restClient;
+    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final MineruProperties properties;
     private final HttpClient uploadClient;
 
-    public MineruClient(RestClient mineruRestClient, ObjectMapper objectMapper, MineruProperties properties) {
-        this.restClient = mineruRestClient;
+    public MineruClient(RestTemplate mineruRestTemplate, ObjectMapper objectMapper, MineruProperties properties) {
+        this.restTemplate = mineruRestTemplate;
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.uploadClient = HttpClient.newBuilder()
@@ -46,13 +49,12 @@ public class MineruClient {
                 "enable_table", true,
                 "enable_formula", true
         );
-        HttpResult response = restClient.post()
-                .uri(properties.baseUrl() + "/file-urls/batch")
-                .header(HttpHeaders.AUTHORIZATION, bearerToken())
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(jsonRequestBody(payload))
-                .exchange((request, result) -> readResponse(result.getStatusCode().value(), result.getBody()));
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, bearerToken());
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        HttpResult response = exchange(properties.baseUrl() + "/file-urls/batch", HttpMethod.POST,
+                new HttpEntity<>(jsonRequestBody(payload), headers));
         JsonNode json = apiJson(response, "申请上传地址失败");
         JsonNode data = json.path("data");
         String batchId = data.path("batch_id").asText("");
@@ -85,10 +87,10 @@ public class MineruClient {
     public String waitForResult(String batchId, String filename) {
         long deadline = System.nanoTime() + properties.timeout().toNanos();
         while (System.nanoTime() < deadline) {
-            HttpResult response = restClient.get()
-                    .uri(properties.baseUrl() + "/extract-results/batch/" + batchId)
-                    .header(HttpHeaders.AUTHORIZATION, bearerToken())
-                    .exchange((request, result) -> readResponse(result.getStatusCode().value(), result.getBody()));
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.AUTHORIZATION, bearerToken());
+            HttpResult response = exchange(properties.baseUrl() + "/extract-results/batch/" + batchId,
+                    HttpMethod.GET, new HttpEntity<>(headers));
             JsonNode json = apiJson(response, "查询解析状态失败");
             JsonNode rawResults = json.path("data").path("extract_result");
             JsonNode selected = selectResult(rawResults, filename);
@@ -110,9 +112,7 @@ public class MineruClient {
     }
 
     public byte[] downloadZip(String zipUrl) {
-        HttpResult response = restClient.get()
-                .uri(zipUrl)
-                .exchange((request, result) -> readResponse(result.getStatusCode().value(), result.getBody()));
+        HttpResult response = exchange(zipUrl, HttpMethod.GET, HttpEntity.EMPTY);
         if (response.status() != 200) {
             throw new MineruException("结果下载失败（HTTP " + response.status() + "）");
         }
@@ -157,8 +157,9 @@ public class MineruClient {
         }
     }
 
-    private HttpResult readResponse(int status, java.io.InputStream body) throws IOException {
-        return new HttpResult(status, body.readAllBytes());
+    private HttpResult exchange(String url, HttpMethod method, HttpEntity<?> request) {
+        ResponseEntity<byte[]> response = restTemplate.exchange(url, method, request, byte[].class);
+        return new HttpResult(response.getStatusCodeValue(), response.getBody() == null ? new byte[0] : response.getBody());
     }
 
     private void requireApiKey() {

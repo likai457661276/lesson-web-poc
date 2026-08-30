@@ -5,7 +5,7 @@ function setClassName(element: HTMLElement, className: string) {
   element.className = className
 }
 
-function renderBlock(block: LessonBlock, assetUrls: Readonly<Record<string, string>>): HTMLElement {
+function renderBlock(block: LessonBlock): HTMLElement {
   switch (block.type) {
     case 'heading': {
       const level = Math.min(Math.max(block.level, 1), 6)
@@ -36,17 +36,13 @@ function renderBlock(block: LessonBlock, assetUrls: Readonly<Record<string, stri
       wrapper.innerHTML = DOMPurify.sanitize(block.html, {
         ADD_ATTR: ['data-latex', 'role', 'tabindex'],
       })
-      wrapper.querySelectorAll('img').forEach((image) => {
-        const original = image.getAttribute('src') ?? ''
-        image.setAttribute('src', assetUrls[original] ?? original)
-      })
       return wrapper
     }
     case 'image': {
       const figure = window.document.createElement('figure')
       setClassName(figure, 'lesson-image')
       const image = window.document.createElement('img')
-      image.src = assetUrls[block.src] ?? block.src
+      image.src = block.src
       image.alt = block.alt ?? ''
       figure.append(image)
       if (block.alt) {
@@ -70,7 +66,6 @@ function renderBlock(block: LessonBlock, assetUrls: Readonly<Record<string, stri
 /** Rebuild export markup exclusively from persisted document data. */
 export function renderDocumentForExport(
   document: LessonDocument,
-  assetUrls: Readonly<Record<string, string>>,
 ): HTMLElement {
   const article = window.document.createElement('article')
   setClassName(article, 'lesson-document')
@@ -83,7 +78,7 @@ export function renderDocumentForExport(
       wrapper,
       `document-block${block.type === 'heading' ? ` document-block-heading-${block.alignment}` : ''}`,
     )
-    wrapper.append(renderBlock(block, assetUrls))
+    wrapper.append(renderBlock(block))
     blocks.append(wrapper)
   }
 

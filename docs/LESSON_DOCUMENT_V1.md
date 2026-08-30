@@ -30,7 +30,16 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
 
 标题块的 `alignment` 表示源文档中的语义对齐方式。Adapter 应从 Provider 的版面几何信息通用推导；缺少可靠几何信息时使用 `left`，不得根据标题文字或文件名猜测。标题 `text` 可包含由可靠 OCR 行内几何恢复出的有效空白，Web Renderer 和 DOCX Exporter 通过保留空白还原标题内部的相对位置。各输出端使用语义对齐排版，不消费 Provider 坐标。
 
-当前 Web Renderer 支持基础编辑：文档标题、标题块、段落、列表项、图片说明和表格单元格可通过编辑模式直接修改。PoC 不包含服务端数据库；解析完成的 `LessonDocument` 与图片资源缓存在浏览器 IndexedDB 中，刷新后仍可查看、继续编辑、导出 DOCX 或从本机删除。这些修改不会回写源 PDF。缓存中的 `LessonDocument` 是编辑与导出的唯一内容数据源；DOCX 导出必须从最新文档数据和缓存图片重建导出 HTML，不得以当前页面 DOM 作为持久化结果，便于后续将同一份数据接入服务端保存。后续服务端保存能力仅在 Java 后端实现，Python 后端不纳入该功能范围。
+当前 Web Renderer 支持基础编辑：文档标题、标题块、段落、列表项、图片说明和表格单元格可通过编辑模式直接修改。解析完成的 `LessonDocument`、任务状态和资源元数据由 Java 后端保存到 MySQL；PDF、MinerU 原始结果及图片继续保存在服务端 `DATA_DIR`。前端不使用 IndexedDB 或 Blob 缓存，刷新、打开、编辑和删除均以服务端数据库为唯一真源，图片直接使用后端资源 URL。这些修改不会回写源 PDF。DOCX 导出必须从最新 `LessonDocument` 数据和服务端图片 URL 重建导出 HTML，不得以当前页面 DOM 作为持久化结果。服务端文档库仅由 Java 后端提供，Python 后端不实现对应接口。
+
+## Java 服务端文档库
+
+- `GET /api/lesson-documents` 返回未删除文档摘要，字段为 `id`、`title`、`sourceFileName`、`sourceType`、`blockCount`、`createdAt` 和 `updatedAt`，按 `updatedAt` 倒序。
+- `GET /api/lesson-documents/{documentId}` 返回完整 v1 文档。
+- `PUT /api/lesson-documents/{documentId}` 覆盖当前文档；路径 ID 必须与正文 `documentId` 一致，正文须通过 v1 校验。前端失焦后串行保存，最后写入生效，不包含离线同步或版本冲突协议。
+- `DELETE /api/lesson-documents/{documentId}` 软删除并返回 `204`。删除后，文档、任务和资源接口均返回 `404`；数据库记录和文件永久保留，不提供恢复或定期物理清理。
+
+当前文档库全局共享，不自动迁移浏览器旧数据或导入历史任务目录。
 
 ## 示例
 
