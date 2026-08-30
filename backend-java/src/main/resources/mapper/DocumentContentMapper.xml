@@ -14,12 +14,13 @@
     WHERE j.del_flag = '0' AND j.status = 2
     ORDER BY c.updated_at DESC
   </select>
-  <update id="updateActive" parameterType="com.lessonweb.lesson.persistence.entity.DocumentContentEntity">
+  <update id="updateActive">
     UPDATE lesson_document_content c
     INNER JOIN lesson_document_conversion j ON j.id = c.conversion_id
-    SET c.version = #{version}, c.title = #{title}, c.source_type = #{sourceType},
-        c.source_file_name = #{sourceFileName}, c.block_count = #{blockCount},
-        c.content_json = #{contentJson}, c.updated_at = #{updatedAt}
-    WHERE c.id = #{id} AND j.del_flag = '0' AND j.status = 2
+    SET c.version = #{entity.version}, c.title = #{entity.title}, c.source_type = #{entity.sourceType},
+        c.source_file_name = #{entity.sourceFileName}, c.block_count = #{entity.blockCount},
+        c.content_json = #{entity.contentJson}, c.updated_at = #{entity.updatedAt}
+    WHERE c.id = #{entity.id} AND j.del_flag = '0' AND j.status = 2
+      AND CAST(c.content_json AS BINARY) = CAST(#{expectedJson} AS BINARY)
   </update>
 </mapper>

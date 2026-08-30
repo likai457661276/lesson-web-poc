@@ -4,12 +4,12 @@ import { useRef } from 'react'
 import type { TableBlock as Table } from '../../types/lesson-document'
 import { EditableFormula } from './EditableFormula'
 
-function serializeEditedTable(table: HTMLTableElement): string {
+function serializeEditedTable(table: HTMLTableElement, changedFormula?: { index: number; latex: string }): string {
   const clone = table.cloneNode(true) as HTMLTableElement
   clone.querySelectorAll('.formula-editor, .formula-edit-hint, .formula-validation-badge').forEach((node) => node.remove())
-  clone.querySelectorAll('[data-latex]').forEach((node) => {
+  clone.querySelectorAll('[data-latex]').forEach((node, index) => {
     const span = window.document.createElement('span')
-    span.setAttribute('data-latex', node.getAttribute('data-latex') ?? '')
+    span.setAttribute('data-latex', changedFormula?.index === index ? changedFormula.latex : node.getAttribute('data-latex') ?? '')
     node.replaceWith(span)
   })
   clone.querySelectorAll('[contenteditable]').forEach((node) => node.removeAttribute('contenteditable'))
@@ -24,28 +24,34 @@ export function TableBlock({
   block,
   editable,
   onChange,
+  onDraftChange,
 }: {
   block: Table
   editable: boolean
   onChange?: (block: Table) => void
+  onDraftChange?: (id: string, dirty: boolean) => void
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const persist = () => {
+  const persist = (changedFormula?: { index: number; latex: string }) => {
     const table = wrapperRef.current?.querySelector('table')
-    if (!table || !onChange) return
-    onChange({ ...block, html: serializeEditedTable(table) })
+    if (!editable || !table || !onChange) return
+    onChange({ ...block, html: serializeEditedTable(table, changedFormula) })
   }
 
   const safeHtml = DOMPurify.sanitize(block.html, {
     ADD_ATTR: ['data-latex', 'role', 'tabindex'],
   })
+  let nextFormulaIndex = 0
   const options: HTMLReactParserOptions = {
     replace(node) {
       if (node instanceof Element && node.attribs?.['data-latex']) {
+        const formulaIndex = nextFormulaIndex++
         return (
           <EditableFormula
             latex={node.attribs['data-latex']}
-            onChange={() => window.setTimeout(persist, 0)}
+            editable={editable}
+            onDraftChange={onDraftChange}
+            onChange={(latex) => persist({ index: formulaIndex, latex })}
           />
         )
       }
@@ -66,7 +72,11 @@ export function TableBlock({
             className={`${node.attribs.class ?? ''} editable-copy`}
             contentEditable={editable}
             suppressContentEditableWarning
-            onBlur={persist}
+            onBlur={(event) => {
+              if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+              if (wrapperRef.current?.querySelector('.formula-editor')) return
+              persist()
+            }}
           >
             {domToReact(node.children as DOMNode[], options)}
           </Tag>

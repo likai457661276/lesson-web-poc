@@ -21,8 +21,9 @@ export function ListBlock({
           suppressContentEditableWarning
           key={`${block.id}-${index}`}
           onBlur={(event) => {
+            if (!editable) return
             const next = [...items]
-            next[index] = event.currentTarget.textContent?.trim() || item
+            next[index] = event.currentTarget.textContent?.trim() ?? ''
             setItems(next)
             onChange?.({ ...block, items: next })
           }}

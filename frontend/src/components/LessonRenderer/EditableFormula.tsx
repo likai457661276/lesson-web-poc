@@ -1,11 +1,13 @@
 import katex from 'katex'
-import { useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { validateFormula, type FormulaValidationResult } from '../../api/documents'
 
 interface EditableFormulaProps {
   latex: string
+  editable: boolean
   displayMode?: boolean
   onChange?: (latex: string) => void
+  onDraftChange?: (id: string, dirty: boolean) => void
 }
 
 function renderLatex(latex: string, displayMode: boolean): { html: string; error: string } {
@@ -26,7 +28,8 @@ function renderLatex(latex: string, displayMode: boolean): { html: string; error
   }
 }
 
-export function EditableFormula({ latex: initialLatex, displayMode = false, onChange }: EditableFormulaProps) {
+export function EditableFormula({ latex: initialLatex, editable, displayMode = false, onChange, onDraftChange }: EditableFormulaProps) {
+  const editorId = useId()
   const [latex, setLatex] = useState(initialLatex)
   const [draft, setDraft] = useState(initialLatex)
   const [editing, setEditing] = useState(false)
@@ -36,8 +39,11 @@ export function EditableFormula({ latex: initialLatex, displayMode = false, onCh
   const rendered = useMemo(() => renderLatex(latex, displayMode), [displayMode, latex])
   const preview = useMemo(() => renderLatex(draft, displayMode), [displayMode, draft])
 
+  useEffect(() => { onDraftChange?.(editorId, checking || (editing && draft !== latex)) }, [draft, editing, checking, latex, editorId, onDraftChange])
+  useEffect(() => () => onDraftChange?.(editorId, false), [editorId, onDraftChange])
+
   const save = async () => {
-    if (preview.error || !draft.trim()) return
+    if (!editable || checking || preview.error || !draft.trim()) return
     setChecking(true)
     setRequestError('')
     try {
@@ -53,6 +59,12 @@ export function EditableFormula({ latex: initialLatex, displayMode = false, onCh
     } finally {
       setChecking(false)
     }
+  }
+
+  if (!editable) {
+    return <span className={`editable-formula-shell ${displayMode ? 'is-display' : ''}`} data-latex={latex}>
+      {rendered.error ? <code>{latex}</code> : <span dangerouslySetInnerHTML={{ __html: rendered.html }} />}
+    </span>
   }
 
   return (
@@ -71,7 +83,7 @@ export function EditableFormula({ latex: initialLatex, displayMode = false, onCh
 
       {validation && !editing && (
         <span className={`formula-validation-badge ${validation.parseable ? 'is-valid' : 'needs-review'}`}>
-          {validation.parseable ? 'SymPy 已校验' : '需人工复核'}
+          {validation.parseable ? '结构已校验' : '需人工复核'}
         </span>
       )}
 
@@ -83,15 +95,16 @@ export function EditableFormula({ latex: initialLatex, displayMode = false, onCh
             value={draft}
             rows={3}
             spellCheck={false}
+            disabled={checking}
             onChange={(event) => setDraft(event.target.value)}
           />
           <span className={`formula-live-preview ${preview.error ? 'has-error' : ''}`}>
             {preview.error ? preview.error : <span dangerouslySetInnerHTML={{ __html: preview.html }} />}
           </span>
           {requestError && <span className="formula-request-error">{requestError}</span>}
-          <span className="formula-editor-note">保存时由 SymPy 检查结构；OCR 结果仍需结合原页人工复核。</span>
+          <span className="formula-editor-note">保存时由后端检查结构；OCR 结果仍需结合原页人工复核。</span>
           <span className="formula-editor-actions">
-            <button type="button" onClick={() => setEditing(false)}>取消</button>
+            <button type="button" disabled={checking} onClick={() => setEditing(false)}>取消</button>
             <button type="button" disabled={Boolean(preview.error) || checking || !draft.trim()} onClick={save}>
               {checking ? '校验中…' : '校验并应用'}
             </button>

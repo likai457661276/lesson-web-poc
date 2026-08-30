@@ -83,6 +83,12 @@ public class LocalStorage {
         writeJson(jobDir(jobId).resolve("mineru-result.json"), payload);
     }
 
+    /** Only call before a job has been accepted by the executor. */
+    public void discardUnprocessedUpload(String jobId) {
+        Path directory = jobDir(jobId);
+        deleteFailedUpload(directory, directory.resolve("source.pdf"));
+    }
+
     public Path resolveAsset(String jobId, String filename) {
         Path assetsDir = jobDir(jobId).resolve("assets").normalize();
         Path path = assetsDir.resolve(filename == null ? "" : filename).normalize();

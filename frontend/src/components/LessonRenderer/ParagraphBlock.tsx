@@ -17,7 +17,8 @@ export function ParagraphBlock({
       contentEditable={editable}
       suppressContentEditableWarning
       onBlur={(event) => {
-        const next = event.currentTarget.textContent?.trim() || text
+        if (!editable) return
+        const next = event.currentTarget.textContent?.trim() ?? ''
         setText(next)
         onChange?.({ ...block, text: next })
       }}

@@ -71,6 +71,7 @@ class LessonDocumentLibraryContractTest extends MySqlContractTest {
         LessonDocument edited = new LessonDocument("1.0", document.documentId(), "编辑标题",
                 document.metadata(), List.of(new ParagraphBlock("block-1", "编辑正文")));
         mockMvc.perform(put("/api/lesson-documents/{id}", document.documentId())
+                        .header("If-Match", library.snapshot(document.documentId()).etag())
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(edited)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("编辑标题"));
 
@@ -99,6 +100,38 @@ class LessonDocumentLibraryContractTest extends MySqlContractTest {
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(mismatched)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("DOCUMENT_ID_MISMATCH"));
+    }
+
+    @Test
+    void requiresEtagAndRejectsStaleEditsWithoutOverwriting() throws Exception {
+        LessonDocument original = completedDocument("Original");
+        String id = original.documentId();
+        String etag = mockMvc.perform(get("/api/lesson-documents/{id}", id))
+                .andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        org.assertj.core.api.Assertions.assertThat(etag).matches("\"[a-f0-9]{64}\"");
+        LessonDocument first = new LessonDocument("1.0", id, "FIRST", original.metadata(), original.blocks());
+        mockMvc.perform(put("/api/lesson-documents/{id}", id)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(first)))
+                .andExpect(status().isPreconditionRequired());
+        String updatedEtag = mockMvc.perform(put("/api/lesson-documents/{id}", id).header("If-Match", etag)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(first)))
+                .andExpect(status().isOk()).andReturn().getResponse().getHeader("ETag");
+        org.assertj.core.api.Assertions.assertThat(updatedEtag).isNotEqualTo(etag);
+        mockMvc.perform(put("/api/lesson-documents/{id}", id).header("If-Match", etag)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(original)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("DOCUMENT_CONFLICT"));
+        org.assertj.core.api.Assertions.assertThat(library.get(id).title()).isEqualTo("FIRST");
+    }
+
+    @Test
+    void databaseCompareAndSetRejectsStaleContentIncludingCaseOnlyChanges() {
+        LessonDocument original = completedDocument("ABC");
+        DocumentContentEntity before = contents.selectActiveById(original.documentId());
+        DocumentContentEntity changed = contents.selectActiveById(original.documentId());
+        changed.setContentJson(before.getContentJson().replace("ABC", "abc"));
+        org.assertj.core.api.Assertions.assertThat(contents.updateActive(changed, before.getContentJson())).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(contents.updateActive(before, before.getContentJson())).isZero();
+        org.assertj.core.api.Assertions.assertThat(library.get(original.documentId()).title()).isEqualTo("abc");
     }
 
     @Test

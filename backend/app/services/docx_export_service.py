@@ -22,6 +22,9 @@ from app.core.exceptions import AppError
 from app.services.docx_font_embedder import FONT_FAMILY, embed_default_fonts
 
 CONTENT_WIDTH_DXA = 9360
+MAX_TABLE_ROWS = 2000
+MAX_TABLE_COLUMNS = 100
+MAX_TABLE_CELLS = 10000
 TABLE_INDENT_DXA = 120
 CELL_MARGIN_DXA = {"top": 120, "bottom": 120, "start": 140, "end": 140}
 EAST_ASIA_FONT = FONT_FAMILY
@@ -318,6 +321,8 @@ class DocxExportService:
         source_rows = element.find_all("tr")
         if not source_rows:
             return False
+        if len(source_rows) > MAX_TABLE_ROWS:
+            raise self._table_too_large()
 
         placements: list[tuple[int, int, int, int, Tag]] = []
         occupied: set[tuple[int, int]] = set()
@@ -327,10 +332,12 @@ class DocxExportService:
             for source_cell in source_row.find_all(["th", "td"], recursive=False):
                 while (row_index, column) in occupied:
                     column += 1
-                rowspan = self._positive_int(source_cell.get("rowspan"), 1)
-                colspan = self._positive_int(source_cell.get("colspan"), 1)
+                rowspan = self._table_span(source_cell.get("rowspan"), MAX_TABLE_ROWS)
+                colspan = self._table_span(source_cell.get("colspan"), MAX_TABLE_COLUMNS)
+                if column + colspan > MAX_TABLE_COLUMNS or len(source_rows) * (column + colspan) > MAX_TABLE_CELLS:
+                    raise self._table_too_large()
                 placements.append((row_index, column, rowspan, colspan, source_cell))
-                for r in range(row_index, row_index + rowspan):
+                for r in range(row_index, min(len(source_rows), row_index + rowspan)):
                     for c in range(column, column + colspan):
                         occupied.add((r, c))
                 column += colspan
@@ -356,9 +363,12 @@ class DocxExportService:
             paragraph = cell.paragraphs[0]
             paragraph.paragraph_format.space_after = Pt(0)
             paragraph.paragraph_format.line_spacing = 1.2
-            self._append_inline(paragraph, source_cell)
-            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             self._set_cell_width(cell, sum(widths[column : end_col + 1]))
+            self._append_inline(paragraph, source_cell)
+            cell.vertical_alignment = (
+                WD_CELL_VERTICAL_ALIGNMENT.CENTER if source_cell.name.lower() == "th"
+                else WD_CELL_VERTICAL_ALIGNMENT.TOP
+            )
             classes = set(source_cell.get("class") or [])
             if "lesson-layout-centered-cell" in classes:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -377,16 +387,20 @@ class DocxExportService:
 
     @staticmethod
     def _table_widths(placements: list[tuple[int, int, int, int, Tag]], count: int) -> list[int]:
-        weights = [8] * count
+        loads = [0.0] * count
         for _row, column, _rowspan, colspan, cell in placements:
-            content_weight = min(len(cell.get_text(" ", strip=True)), 40 * colspan)
-            per_column_weight = max(8, round(content_weight / colspan))
+            # Full-width banners do not constrain relative column widths.
+            if colspan == count:
+                continue
+            content_weight = len(cell.get_text(" ", strip=True)) + 40 * len(cell.find_all("img"))
             for index in range(column, min(column + colspan, count)):
-                weights[index] = max(weights[index], per_column_weight)
+                loads[index] += content_weight / colspan
+        # Balance wrapping while reserving space for short columns.
+        weights = [max(8, load) ** 0.5 for load in loads]
         total = sum(weights)
-        widths = [max(720, round(CONTENT_WIDTH_DXA * weight / total)) for weight in weights]
-        scale = CONTENT_WIDTH_DXA / sum(widths)
-        widths = [round(width * scale) for width in widths]
+        minimum = min(720, CONTENT_WIDTH_DXA // count)
+        remaining = CONTENT_WIDTH_DXA - minimum * count
+        widths = [minimum + int(remaining * weight / total) for weight in weights]
         widths[-1] += CONTENT_WIDTH_DXA - sum(widths)
         return widths
 
@@ -470,6 +484,9 @@ class DocxExportService:
         except (ValueError, OSError, TypeError):
             return False
         max_width = Inches(6.25)
+        if hasattr(paragraph._parent, "_tc") and paragraph._parent.width is not None:
+            # Cell width is in EMUs; subtract the same margins as the table.
+            max_width = min(max_width, max(1, paragraph._parent.width - 280 * 635))
         max_height = Inches(7.5)
         scale = min(1.0, max_width / shape.width, max_height / shape.height)
         shape.width = int(shape.width * scale)
@@ -556,11 +573,25 @@ class DocxExportService:
         fonts.set(qn("w:eastAsia"), east_asia)
 
     @staticmethod
-    def _positive_int(value: object, default: int) -> int:
+    def _table_span(value: object, maximum: int) -> int:
+        if value is None or not str(value).strip():
+            return 1
         try:
-            return max(1, int(str(value)))
-        except (TypeError, ValueError):
-            return default
+            text = str(value)
+            if not re.fullmatch(r"[+-]?[0-9]+", text):
+                raise ValueError("invalid span")
+            span = int(text)
+            if not -(2**63) <= span < 2**63:
+                raise ValueError("span overflow")
+        except (TypeError, ValueError) as error:
+            raise AppError("INVALID_TABLE_SPAN", "表格跨行或跨列值无效", 422) from error
+        if span > maximum:
+            raise DocxExportService._table_too_large()
+        return max(1, span)
+
+    @staticmethod
+    def _table_too_large() -> AppError:
+        return AppError("TABLE_TOO_LARGE", "表格超出导出限制（2000 行、100 列、10000 个展开单元格）", 413)
 
     @staticmethod
     def _safe_filename(filename: str) -> str:

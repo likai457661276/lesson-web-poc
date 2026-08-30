@@ -11,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.IOException;
 import java.net.URI;
@@ -54,7 +56,7 @@ public class MineruClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
         HttpResult response = exchange(properties.baseUrl() + "/file-urls/batch", HttpMethod.POST,
-                new HttpEntity<>(jsonRequestBody(payload), headers));
+                new HttpEntity<>(jsonRequestBody(payload), headers), "申请上传地址失败");
         JsonNode json = apiJson(response, "申请上传地址失败");
         JsonNode data = json.path("data");
         String batchId = data.path("batch_id").asText("");
@@ -80,7 +82,7 @@ public class MineruClient {
             Thread.currentThread().interrupt();
             throw new MineruException("文件上传被中断", exception);
         } catch (IOException exception) {
-            throw new MineruException("文件上传失败", exception);
+            throw new MineruException("文件上传失败：网络或文件读取失败（" + exception.getClass().getSimpleName() + "）");
         }
     }
 
@@ -90,7 +92,7 @@ public class MineruClient {
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.AUTHORIZATION, bearerToken());
             HttpResult response = exchange(properties.baseUrl() + "/extract-results/batch/" + batchId,
-                    HttpMethod.GET, new HttpEntity<>(headers));
+                    HttpMethod.GET, new HttpEntity<>(headers), "查询解析状态失败");
             JsonNode json = apiJson(response, "查询解析状态失败");
             JsonNode rawResults = json.path("data").path("extract_result");
             JsonNode selected = selectResult(rawResults, filename);
@@ -112,7 +114,7 @@ public class MineruClient {
     }
 
     public byte[] downloadZip(String zipUrl) {
-        HttpResult response = exchange(zipUrl, HttpMethod.GET, HttpEntity.EMPTY);
+        HttpResult response = exchange(zipUrl, HttpMethod.GET, HttpEntity.EMPTY, "结果下载失败");
         if (response.status() != 200) {
             throw new MineruException("结果下载失败（HTTP " + response.status() + "）");
         }
@@ -157,9 +159,16 @@ public class MineruClient {
         }
     }
 
-    private HttpResult exchange(String url, HttpMethod method, HttpEntity<?> request) {
-        ResponseEntity<byte[]> response = restTemplate.exchange(url, method, request, byte[].class);
-        return new HttpResult(response.getStatusCodeValue(), response.getBody() == null ? new byte[0] : response.getBody());
+    private HttpResult exchange(String url, HttpMethod method, HttpEntity<?> request, String context) {
+        try {
+            ResponseEntity<byte[]> response = restTemplate.exchange(url, method, request, byte[].class);
+            return new HttpResult(response.getStatusCodeValue(), response.getBody() == null ? new byte[0] : response.getBody());
+        } catch (RestClientResponseException exception) {
+            throw new MineruException(context + "（HTTP " + exception.getRawStatusCode() + "）");
+        } catch (RestClientException exception) {
+            // Do not retain the exception: its message may contain a signed URL.
+            throw new MineruException(context + "：网络连接失败（" + exception.getClass().getSimpleName() + "）");
+        }
     }
 
     private void requireApiKey() {

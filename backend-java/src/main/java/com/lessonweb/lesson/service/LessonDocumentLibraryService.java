@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 @Service
 public class LessonDocumentLibraryService {
@@ -35,23 +39,34 @@ public class LessonDocumentLibraryService {
     }
 
     public LessonDocument get(String id) {
+        return snapshot(id).document();
+    }
+
+    public Snapshot snapshot(String id) {
         DocumentContentEntity entity = contents.selectActiveById(id);
         if (entity == null) throw notFound();
-        return deserialize(entity.getContentJson());
+        return new Snapshot(deserialize(entity.getContentJson()), etag(entity.getContentJson()));
     }
 
     @Transactional
-    public LessonDocument update(String id, LessonDocument document) {
+    public Snapshot update(String id, LessonDocument document, String ifMatch) {
         if (!id.equals(document.documentId())) {
             throw new AppException("DOCUMENT_ID_MISMATCH", "路径中的文档 ID 与请求内容不一致", HttpStatus.UNPROCESSABLE_ENTITY);
         }
+        DocumentContentEntity current = contents.selectActiveById(id);
+        if (current == null) throw notFound();
+        if (ifMatch == null || ifMatch.isBlank()) {
+            throw new AppException("DOCUMENT_VERSION_REQUIRED", "保存时必须提供读取文档时的 ETag", HttpStatus.PRECONDITION_REQUIRED);
+        }
+        if (!etag(current.getContentJson()).equals(ifMatch)) throw conflict();
         DocumentContentEntity entity = new DocumentContentEntity();
         entity.setId(id); entity.setVersion(document.version()); entity.setTitle(document.title());
         entity.setSourceType(document.metadata().sourceType()); entity.setSourceFileName(document.metadata().sourceFileName());
         entity.setBlockCount(document.blocks().size()); entity.setContentJson(serialize(document));
         entity.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
-        if (contents.updateActive(entity) == 0) throw notFound();
-        return get(id);
+        // The binary comparison also protects edits racing after the ETag check.
+        if (contents.updateActive(entity, current.getContentJson()) == 0) throw conflict();
+        return new Snapshot(document, etag(entity.getContentJson()));
     }
 
     @Transactional
@@ -76,4 +91,19 @@ public class LessonDocumentLibraryService {
     private AppException notFound() {
         return new AppException("DOCUMENT_NOT_FOUND", "文档不存在", HttpStatus.NOT_FOUND);
     }
+
+    private AppException conflict() {
+        return new AppException("DOCUMENT_CONFLICT", "文档已被其他页面修改，请重新加载后编辑", HttpStatus.CONFLICT);
+    }
+
+    private String etag(String json) {
+        try {
+            return "\"" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(json.getBytes(StandardCharsets.UTF_8))) + "\"";
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    public record Snapshot(LessonDocument document, String etag) {}
 }

@@ -26,7 +26,13 @@ type ImageBlock = { id: string; type: 'image'; src: string; alt?: string | null 
 type FormulaBlock = { id: string; type: 'formula'; latex: string }
 ```
 
-表格保留 HTML，以支持 `rowspan`、`colspan`；前端渲染前必须消毒。表格内公式使用 `<span data-latex="..."></span>` 占位，Renderer 将其转换为可编辑 KaTeX 公式。图片只保存站内 URL，禁止在 JSON 中内嵌 Base64。公式内容为 KaTeX 可接受的 LaTeX；编辑保存时可调用 `/api/formulas/validate` 进行 SymPy 结构校验。
+表格保留 HTML，以支持 `rowspan`、`colspan`；前端渲染前必须消毒。表格内公式使用 `<span data-latex="..."></span>` 占位，Renderer 将其转换为 KaTeX 公式，仅编辑模式允许修改。图片只保存站内 URL，禁止在 JSON 中内嵌 Base64。公式内容为 KaTeX 可接受的 LaTeX；编辑保存时可调用 `/api/formulas/validate` 进行结构校验（Java 使用 Symja，Python 使用 SymPy）。
+
+两套 DOCX 导出器均限制单个表格最多 2000 行、100 列、10000 个展开单元格；`rowspan` 和 `colspan` 分别不得超过行数和列数上限。超限返回 `413 / TABLE_TOO_LARGE`，非法或超过有符号 64 位整数范围的跨行/跨列值返回 `422 / INVALID_TABLE_SPAN`。该限制在展开表格前执行，不依赖 HTML 请求长度。
+
+DOCX 表格正文单元格默认顶端对齐，表头垂直居中，允许长行跨页。固定页宽内按各列累计内容量的平方根分配列宽并预留最小宽度；通栏内容不干扰列宽，其他合并单元格内容分摊到所占列。表格图片按单元格（含合并列）扣除内边距后的宽度等比缩小，不裁切、不放大。该排版规则仅消费通用 HTML，不使用文件名或 Provider 坐标。长短列内容不均造成的剩余空间不能在保留同一行对应关系时完全消除。
+
+MinerU 上传地址申请、文件上传、状态轮询和结果下载的网络错误（包括 TLS、连接失败、超时和传输中断）均归类为 `MINERU_PARSE_FAILED`，不归类为 `ADAPTER_CONVERT_FAILED`；错误消息标识失败阶段，不包含签名 URL 或凭据。同步接口对应状态码为 502，异步任务在 `error.code` / `error.message` 中返回失败原因。
 
 标题块的 `alignment` 表示源文档中的语义对齐方式。Adapter 应从 Provider 的版面几何信息通用推导；缺少可靠几何信息时使用 `left`，不得根据标题文字或文件名猜测。标题 `text` 可包含由可靠 OCR 行内几何恢复出的有效空白，Web Renderer 和 DOCX Exporter 通过保留空白还原标题内部的相对位置。各输出端使用语义对齐排版，不消费 Provider 坐标。
 
@@ -35,8 +41,10 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
 ## Java 服务端文档库
 
 - `GET /api/lesson-documents` 返回未删除文档摘要，字段为 `id`、`title`、`sourceFileName`、`sourceType`、`blockCount`、`createdAt` 和 `updatedAt`，按 `updatedAt` 倒序。
-- `GET /api/lesson-documents/{documentId}` 返回完整 v1 文档。
-- `PUT /api/lesson-documents/{documentId}` 覆盖当前文档；路径 ID 必须与正文 `documentId` 一致，正文须通过 v1 校验。前端失焦后串行保存，最后写入生效，不包含离线同步或版本冲突协议。
+- `GET /api/lesson-documents/{documentId}` 返回完整 v1 文档及强 `ETag` 响应头，`Cache-Control: no-store`。ETag 为当前存储内容的 SHA-256 摘要，用于编辑并发控制，不是 `LessonDocument.version` 协议版本。
+- `PUT /api/lesson-documents/{documentId}` 覆盖当前文档；路径 ID 必须与正文 `documentId` 一致，正文须通过 v1 校验，并通过 `If-Match` 传入上次读取或保存响应的完整 ETag（包括引号）。缺少该头返回 `428 / DOCUMENT_VERSION_REQUIRED`；内容已经变化返回 `409 / DOCUMENT_CONFLICT`，不覆盖服务端。成功返回文档及更新后的 ETag。数据库通过原内容的二进制原子比较防止检查后发生并发覆盖。
+- 前端失焦后串行保存，保存期间合并待发送的最新草稿，并使用上一次成功保存返回的 ETag。保存失败保留内存草稿，显示失败并允许手动重试；冲突必须由用户选择是否放弃草稿、重新加载服务端版本，不自动覆盖或合并。未保存时拦截页面跳转，并提示刷新/关闭风险，不提供离线缓存。
+- 单篇和批量 DOCX 导出均等待当前编辑保存成功，然后重新读取服务端文档；未应用的公式或文字编辑、保存失败和版本冲突均会阻止导出，不以未持久化草稿冒充服务端内容。
 - `DELETE /api/lesson-documents/{documentId}` 软删除并返回 `204`。删除后，文档、任务和资源接口均返回 `404`；数据库记录和文件永久保留，不提供恢复或定期物理清理。
 
 当前文档库全局共享，不自动迁移浏览器旧数据或导入历史任务目录。

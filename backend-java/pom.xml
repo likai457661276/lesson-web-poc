@@ -63,6 +63,12 @@
             <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
             <version>11.5.14</version>
         </dependency>
+        <!-- Use the same FontBox version already supplied by docx4j. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>fontbox</artifactId>
+            <version>3.0.7</version>
+        </dependency>
         <!-- Spring Boot 2's BOM pins JAXB 2.x; docx4j 11 requires Jakarta JAXB 4.x. -->
         <dependency>
             <groupId>jakarta.xml.bind</groupId>

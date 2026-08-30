@@ -1,4 +1,8 @@
 import uuid
+import base64
+import struct
+import zlib
+import pytest
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -12,6 +16,64 @@ from app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.mark.parametrize("span", [1, 2])
+def test_large_table_image_fits_merged_cell(span: int) -> None:
+    def chunk(tag, content):
+        return struct.pack(">I", len(content)) + tag + content + struct.pack(">I", zlib.crc32(tag + content))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1200, 240, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress((b"\0" + b"\0\0\xff" * 1200) * 240)) + chunk(b"IEND", b"")
+    image = base64.b64encode(png).decode()
+    html = f"<table><tr><td colspan='{span}'><img src='data:image/png;base64,{image}'></td><td>" + "实验记录" * 100 + "</td></tr></table>"
+    response = client.post("/api/documents/export-docx", json={"html": html})
+    assert response.status_code == 200
+    document = Document(BytesIO(response.content))
+    width = document.tables[0].cell(0, 0).width
+    shape = document.inline_shapes[0]
+    assert shape.width <= width - 280 * 635
+    assert abs(shape.width - shape.height * 5) <= 5
+
+
+def test_narrative_table_widths_and_top_alignment_are_content_based() -> None:
+    row = "<tr><td>" + "观测记录" * 150 + "</td><td>" + "实验结论" * 20 + "</td><td>备注</td></tr>"
+    html = "<table><tr><th>记录</th><th>结果</th><th>状态</th></tr>" + row + "</table>"
+    banner = "<tr><td colspan='3'>" + "通栏说明" * 200 + "</td></tr>"
+    documents = []
+    for source in (html, html.replace(row, banner + row)):
+        response = client.post("/api/documents/export-docx", json={"html": source})
+        assert response.status_code == 200
+        documents.append(Document(BytesIO(response.content)))
+    table = documents[0].tables[0]
+    widths = [int(value) for value in table._tbl.xpath("./w:tblGrid/w:gridCol/@w:w")]
+    assert widths[0] > widths[1] > widths[2] >= 720
+    assert sum(widths) == 9360
+    assert widths == [int(value) for value in documents[1].tables[0]._tbl.xpath("./w:tblGrid/w:gridCol/@w:w")]
+    assert table.cell(0, 0)._tc.xpath("./w:tcPr/w:vAlign/@w:val") == ["center"]
+    assert table.cell(1, 0)._tc.xpath("./w:tcPr/w:vAlign/@w:val") == ["top"]
+    assert not table._tbl.xpath(".//w:cantSplit | .//w:keepNext")
+
+
+@pytest.mark.parametrize("html", [
+    "<table><tr><td colspan='2147483647'>x</td></tr></table>",
+    "<table><tr><td rowspan='2147483647'>x</td></tr></table>",
+    "<table><tr><td colspan='60'>x</td><td colspan='60'>y</td></tr></table>",
+    "<table>" + "<tr><td colspan='100'>x</td></tr>" * 101 + "</table>",
+    "<table>" + "<tr><td>x</td></tr>" * 2001 + "</table>",
+])
+def test_export_rejects_oversized_table_before_expansion(html: str) -> None:
+    response = client.post("/api/documents/export-docx", json={"html": html})
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "TABLE_TOO_LARGE"
+
+
+@pytest.mark.parametrize("span", ["99999999999999999999999", "invalid"])
+def test_export_rejects_invalid_table_span(span: str) -> None:
+    response = client.post("/api/documents/export-docx", json={
+        "html": f"<table><tr><td colspan='{span}'>x</td></tr></table>",
+    })
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_TABLE_SPAN"
 
 
 def _read_embedded_font(archive: ZipFile, style: str) -> TTFont:

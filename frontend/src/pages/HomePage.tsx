@@ -1,12 +1,13 @@
 import { AlertCircle, Check, FileSearch, ShieldCheck } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { Link, useMatch, useNavigate, useParams } from 'react-router-dom'
-import { exportDocumentsToZip, getLessonDocument, getParseJob, parseDocument, type DocxExportInput } from '../api/documents'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useBlocker, useMatch, useNavigate, useParams } from 'react-router-dom'
+import { exportDocumentsToZip, getLessonDocument, parseDocument, type DocxExportInput } from '../api/documents'
 import { DocumentLibrary } from '../components/DocumentLibrary'
 import { DocumentUploader } from '../components/DocumentUploader'
 import { LessonRenderer, type LessonRendererHandle } from '../components/LessonRenderer/LessonRenderer'
 import { downloadBlob, prepareDocxExport } from '../components/LessonRenderer/documentExport'
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary'
+import { useParseJobPolling } from '../hooks/useParseJobPolling'
 import type { ParseJob } from '../types/lesson-document'
 
 const statusCopy = {
@@ -23,6 +24,10 @@ export function HomePage() {
   const [file, setFile] = useState<File | null>(null)
   const [job, setJob] = useState<ParseJob | null>(null)
   const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const uploadingRef = useRef(false)
+  const [editorPending, setEditorPending] = useState(false)
+  const editorPendingRef = useRef(false)
   const [batchDownloading, setBatchDownloading] = useState(false)
   const [batchStatus, setBatchStatus] = useState('')
   const [batchError, setBatchError] = useState('')
@@ -36,36 +41,53 @@ export function HomePage() {
     document: serverDocument,
     loadError,
     libraryError,
-    adoptParsedDocument,
+    refreshList,
     saveEdits,
     waitForSaves,
     remove,
+    saveState, saveError, retrySave, reloadDocument, loadVersion,
   } = useDocumentLibrary(documentId)
+  const polling = useParseJobPolling(job, setJob)
   const busy = job?.status === 'pending' || job?.status === 'processing'
+  const controlsDisabled = uploading || Boolean(busy) || batchDownloading
+  const unsaved = editorPending || saveState !== 'saved'
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    unsaved && currentLocation.pathname !== nextLocation.pathname)
   const previewDocument = serverDocument
   const readingLibrary = Boolean(documentId) && !previewDocument && !loadError && !busy
 
+  const onUnsavedChange = useCallback((pending: boolean) => {
+    editorPendingRef.current = pending
+    setEditorPending(pending)
+  }, [])
+
+  const ensureSaved = useCallback(async () => {
+    if (editorPendingRef.current) throw new Error('请先完成当前文字或公式编辑，再导出文档')
+    await waitForSaves()
+  }, [waitForSaves])
+
   useEffect(() => {
-    if (!job || !busy) return
-    const timer = window.setTimeout(async () => {
-      try {
-        setJob(await getParseJob(job.jobId))
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : '状态查询失败')
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      if (unsaved || editorPendingRef.current) {
+        event.preventDefault()
+        event.returnValue = ''
       }
-    }, 1800)
-    return () => window.clearTimeout(timer)
-  }, [job, busy])
+    }
+    window.addEventListener('beforeunload', preventUnload)
+    return () => window.removeEventListener('beforeunload', preventUnload)
+  }, [unsaved])
+
+  useEffect(() => {
+    if (blocker.state === 'blocked' && !unsaved) blocker.proceed()
+  }, [blocker, unsaved])
 
   useEffect(() => {
     if (job?.status !== 'completed' || !job.document) return
     if (completedJobIds.current.has(job.jobId)) return
     completedJobIds.current.add(job.jobId)
-    void (async () => {
-      const available = await adoptParsedDocument(job.document!)
-      if (available) navigate(`/documents/${job.document!.documentId}`)
-    })()
-  }, [adoptParsedDocument, job, navigate])
+    void refreshList()
+    navigate(`/documents/${job.document.documentId}`)
+  }, [refreshList, job, navigate])
 
   useEffect(() => {
     if (pendingDownloadIdRef.current !== documentId || !previewDocument) return
@@ -74,21 +96,33 @@ export function HomePage() {
   }, [documentId, previewDocument])
 
   const submit = async () => {
-    if (!file) return
+    if (!file || uploadingRef.current || busy || batchDownloading || unsaved) return
+    uploadingRef.current = true
+    setUploading(true)
     setError('')
+    setJob(null)
     try {
       navigate('/')
       setJob(await parseDocument(file))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '上传失败')
+    } finally {
+      uploadingRef.current = false
+      setUploading(false)
     }
   }
 
   const selectFile = (nextFile: File) => {
+    if (uploadingRef.current || busy || batchDownloading) return
     if (!nextFile.name.toLowerCase().endsWith('.pdf')) {
       setFile(null)
       setJob(null)
       setError('仅支持 PDF 格式文件')
+      return
+    }
+    if (nextFile.size > 200 * 1024 * 1024) {
+      setFile(null)
+      setError('文件大小超过 200 MB 限制')
       return
     }
     setFile(nextFile)
@@ -110,6 +144,12 @@ export function HomePage() {
   }
 
   const deleteDocument = async (id: string) => {
+    try {
+      await ensureSaved()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '请先保存当前编辑')
+      return
+    }
     const item = items.find((entry) => entry.id === id)
     const label = item?.title || item?.sourceFileName || '该文档'
     if (!window.confirm(`删除「${label}」？文档将从服务端文档库隐藏。`)) return
@@ -127,12 +167,12 @@ export function HomePage() {
     setBatchError('')
     setBatchStatus('正在等待编辑保存…')
     try {
-      await waitForSaves()
+      await ensureSaved()
       const documents: DocxExportInput[] = []
       // Read persisted content without navigating away from the current document.
       for (const [index, id] of ids.entries()) {
         setBatchStatus(`正在准备文档 ${index + 1}/${ids.length}…`)
-        const document = await getLessonDocument(id)
+        const { document } = await getLessonDocument(id)
         documents.push(await prepareDocxExport(document))
       }
       setBatchStatus(`正在生成 ${ids.length} 篇 DOCX 并打包…`)
@@ -167,20 +207,35 @@ export function HomePage() {
           </div>
           <DocumentUploader
             file={file}
-            disabled={Boolean(busy) || batchDownloading}
+            disabled={controlsDisabled || unsaved}
+            busyLabel={uploading ? '上传中…' : batchDownloading ? '打包中…' : busy ? '解析中…' : '请先保存编辑'}
             onFile={selectFile}
             onClear={() => { setFile(null); setJob(null); setError('') }}
             onSubmit={() => void submit()}
           />
 
-          {(job || error) && (
+          {(job || error || uploading) && (
             <section className={`job-status ${job?.status ?? 'failed'}`} aria-live="polite">
               <div className="status-icon">
                 {job?.status === 'completed' ? <Check size={18} /> : error || job?.status === 'failed' ? <AlertCircle size={18} /> : <FileSearch size={18} />}
               </div>
               <div>
-                <strong>{error || (job && statusCopy[job.status])}</strong>
+                <strong>{error || polling.error || (uploading ? '正在上传文件' : job && statusCopy[job.status])}</strong>
                 <span>{job?.error?.message ?? (busy ? '通常需要数十秒，请保持页面打开。' : job?.jobId)}</span>
+                {polling.paused && <button type="button" onClick={polling.resume}>恢复查询</button>}
+              </div>
+            </section>
+          )}
+
+          {blocker.state === 'blocked' && (
+            <section className="job-status failed" role="alert">
+              <div>
+                <strong>{saveState === 'saving' ? '正在保存，完成后自动跳转' : '当前文档有未保存更改'}</strong>
+                <button type="button" onClick={() => blocker.reset()}>留在当前文档</button>
+                {saveState !== 'saving' && <button type="button" onClick={() => {
+                  onUnsavedChange(false)
+                  blocker.proceed()
+                }}>放弃未保存更改并离开</button>}
               </div>
             </section>
           )}
@@ -199,7 +254,7 @@ export function HomePage() {
             items={items}
             ready={listReady}
             activeId={documentId}
-            disabled={Boolean(busy) || batchDownloading}
+            disabled={controlsDisabled}
             batchDownloading={batchDownloading}
             batchStatus={batchStatus}
             batchError={batchError}
@@ -223,12 +278,26 @@ export function HomePage() {
           </div>
           {previewDocument ? (
             <LessonRenderer
-              key={previewDocument.documentId}
+              key={`${previewDocument.documentId}-${loadVersion}`}
               ref={rendererRef}
               document={previewDocument}
               editable={editing}
               onEditableChange={(next) => openDocument(previewDocument.documentId, next ? 'edit' : 'view')}
               onDocumentChange={saveEdits}
+              onUnsavedChange={onUnsavedChange}
+              saveState={saveState}
+              saveError={saveError}
+              onRetrySave={retrySave}
+              onReload={() => {
+                if (!unsaved || window.confirm('放弃未保存的更改并重新加载服务端版本？')) {
+                  onUnsavedChange(false)
+                  reloadDocument()
+                }
+              }}
+              getPersistedDocument={async () => {
+                await ensureSaved()
+                return (await getLessonDocument(previewDocument.documentId)).document
+              }}
             />
           ) : (
             <div className={`empty-preview ${busy ? 'is-processing' : ''}`}>

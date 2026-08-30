@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 interface Props {
   file: File | null
   disabled: boolean
+  busyLabel?: string
   onFile: (file: File) => void
   onClear: () => void
   onSubmit: () => void
@@ -11,7 +12,7 @@ interface Props {
 
 const ACCEPT = 'application/pdf,.pdf'
 
-export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: Props) {
+export function DocumentUploader({ file, disabled, busyLabel = '处理中…', onFile, onClear, onSubmit }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -33,6 +34,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
         onDrop={(event) => {
           event.preventDefault()
           setDragging(false)
+          if (disabled) return
           const nextFile = event.dataTransfer.files[0]
           if (nextFile) onFile(nextFile)
         }}
@@ -42,9 +44,11 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
           type="file"
           accept={ACCEPT}
           hidden
+          disabled={disabled}
           onChange={(event) => {
             const nextFile = event.target.files?.[0]
-            if (nextFile) onFile(nextFile)
+            if (nextFile && !disabled) onFile(nextFile)
+            event.target.value = ''
           }}
         />
         {file ? (
@@ -59,7 +63,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
             </button>
           </>
         ) : (
-          <button type="button" className="drop-trigger" onClick={() => inputRef.current?.click()}>
+          <button type="button" className="drop-trigger" disabled={disabled} onClick={() => inputRef.current?.click()}>
             <span className="upload-icon"><Upload size={24} /></span>
             <strong>拖入 PDF 文件，或点击选择</strong>
             <span>源文件仅用于本次 PoC 解析</span>
@@ -68,7 +72,7 @@ export function DocumentUploader({ file, disabled, onFile, onClear, onSubmit }: 
       </div>
       <button type="button" className="primary-button" onClick={onSubmit} disabled={!file || disabled}>
         {disabled ? <LoaderCircle className="spin" size={18} /> : <Upload size={18} />}
-        {disabled ? '解析中' : '开始解析'}
+        {disabled ? busyLabel : '开始解析'}
       </button>
     </section>
   )

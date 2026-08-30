@@ -54,7 +54,7 @@ class MinerUDocumentParser(DocumentParser):
             "enable_table": True,
             "enable_formula": True,
         }
-        response = await client.post(
+        response = await self._request(client, "POST", "申请上传地址失败",
             f"{self.settings.mineru_base_url}/file-urls/batch",
             headers=self.headers,
             json=payload,
@@ -69,7 +69,7 @@ class MinerUDocumentParser(DocumentParser):
     async def _upload_file(
         self, client: httpx.AsyncClient, upload_url: str, file_path: Path
     ) -> None:
-        response = await client.put(upload_url, content=file_path.read_bytes())
+        response = await self._request(client, "PUT", "文件上传失败", upload_url, content=file_path.read_bytes())
         if response.status_code not in {200, 201, 204}:
             raise MinerUError(f"文件上传失败（HTTP {response.status_code}）")
 
@@ -79,7 +79,7 @@ class MinerUDocumentParser(DocumentParser):
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.settings.mineru_timeout_seconds
         while loop.time() < deadline:
-            response = await client.get(
+            response = await self._request(client, "GET", "查询解析状态失败",
                 f"{self.settings.mineru_base_url}/extract-results/batch/{batch_id}",
                 headers=self.headers,
             )
@@ -103,7 +103,7 @@ class MinerUDocumentParser(DocumentParser):
     async def _download_and_extract(
         self, client: httpx.AsyncClient, zip_url: str, result_dir: Path
     ) -> None:
-        response = await client.get(zip_url)
+        response = await self._request(client, "GET", "结果下载失败", zip_url)
         if response.status_code != 200:
             raise MinerUError(f"结果下载失败（HTTP {response.status_code}）")
         archive_path = result_dir.parent / "mineru-result.zip"
@@ -119,6 +119,16 @@ class MinerUDocumentParser(DocumentParser):
                 archive.extractall(result_dir)
         except zipfile.BadZipFile as exc:
             raise MinerUError("MinerU 结果压缩包无效") from exc
+
+    @staticmethod
+    async def _request(
+        client: httpx.AsyncClient, method: str, context: str, url: str, **kwargs: Any
+    ) -> httpx.Response:
+        try:
+            return await client.request(method, url, **kwargs)
+        except httpx.RequestError as exc:
+            # Signed URLs and credentials must not be copied into task errors/logs.
+            raise MinerUError(f"{context}：网络连接失败（{type(exc).__name__}）") from None
 
     @staticmethod
     def _find_content_list(result_dir: Path) -> Path:

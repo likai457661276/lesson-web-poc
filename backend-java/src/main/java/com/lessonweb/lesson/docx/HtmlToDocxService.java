@@ -36,6 +36,9 @@ public class HtmlToDocxService {
 
     private static final String W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static final int CONTENT_WIDTH_DXA = 9360;
+    private static final int MAX_TABLE_ROWS = 2_000;
+    private static final int MAX_TABLE_COLUMNS = 100;
+    private static final int MAX_TABLE_CELLS = 10_000;
     private static final Pattern INVALID_FILENAME = Pattern.compile("[\\x00-\\x1f<>:\"/\\\\|?*]");
     private final DocxFormulaRenderer formulas;
     private final DocxImageRenderer images;
@@ -228,6 +231,7 @@ public class HtmlToDocxService {
         if (rows.isEmpty()) {
             return null;
         }
+        if (rows.size() > MAX_TABLE_ROWS) throw tableTooLarge();
         List<Placement> placements = new ArrayList<>();
         Set<String> occupied = new HashSet<>();
         int columns = 0;
@@ -235,8 +239,12 @@ public class HtmlToDocxService {
             int column = 0;
             for (Element cell : directChildren(rows.get(row), Set.of("th", "td"))) {
                 while (occupied.contains(row + ":" + column)) column++;
-                int rowspan = positiveInt(cell.attr("rowspan"));
-                int colspan = positiveInt(cell.attr("colspan"));
+                int rowspan = tableSpan(cell.attr("rowspan"), MAX_TABLE_ROWS);
+                int colspan = tableSpan(cell.attr("colspan"), MAX_TABLE_COLUMNS);
+                if (column + colspan > MAX_TABLE_COLUMNS
+                        || (long) rows.size() * (column + colspan) > MAX_TABLE_CELLS) {
+                    throw tableTooLarge();
+                }
                 placements.add(new Placement(row, column, rowspan, colspan, cell));
                 for (int r = row; r < Math.min(rows.size(), row + rowspan); r++) {
                     for (int c = column; c < column + colspan; c++) occupied.add(r + ":" + c);
@@ -271,14 +279,15 @@ public class HtmlToDocxService {
                 if (start != null && start.rowspan > 1) xml.append("<w:vMerge w:val=\"restart\"/>");
                 else if (spanning != null && spanning.row < row) xml.append("<w:vMerge/>");
                 if (start != null && "th".equals(start.cell.normalName())) xml.append("<w:shd w:fill=\"F2F4F7\"/>");
-                xml.append("<w:vAlign w:val=\"center\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"0\"/>");
+                String verticalAlignment = effective != null && "th".equals(effective.cell.normalName()) ? "center" : "top";
+                xml.append("<w:vAlign w:val=\"").append(verticalAlignment).append("\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"0\"/>");
                 if (start != null && start.cell.hasClass("lesson-layout-centered-cell")) xml.append("<w:jc w:val=\"center\"/>");
                 xml.append("</w:pPr>");
                 if (start != null) {
                     boolean header = "th".equals(start.cell.normalName());
                     xml.append(inlineXml(start.cell, header));
                     for (Element image : start.cell.select("img")) {
-                        cellImages.add(new TableCellImage(row, renderedCell, image, header));
+                        cellImages.add(new TableCellImage(row, renderedCell, image, header, Math.max(1, cellWidth - 280)));
                     }
                 }
                 xml.append("</w:p></w:tc>");
@@ -307,7 +316,7 @@ public class HtmlToDocxService {
                     .findFirst()
                     .orElse(null);
             if (paragraph == null) continue;
-            if (!images.append(document, paragraph, entry.image) && !entry.image.attr("alt").isBlank()) {
+            if (!images.append(document, paragraph, entry.image, entry.availableWidthDxa) && !entry.image.attr("alt").isBlank()) {
                 InlineStyle style = entry.bold ? InlineStyle.PLAIN.merge("th") : InlineStyle.PLAIN;
                 appendText(paragraph, "[图片：" + entry.image.attr("alt").trim() + "]", style.withItalic());
             }
@@ -427,32 +436,44 @@ public class HtmlToDocxService {
         return null;
     }
 
-    private int positiveInt(String value) {
-        try { return Math.max(1, Integer.parseInt(value)); }
-        catch (NumberFormatException ignored) { return 1; }
+    private int tableSpan(String value, int maximum) {
+        if (value.isBlank()) return 1;
+        try {
+            long span = Long.parseLong(value);
+            if (span > maximum) throw tableTooLarge();
+            return (int) Math.max(1, span);
+        } catch (NumberFormatException exception) {
+            throw new AppException("INVALID_TABLE_SPAN", "表格跨行或跨列值无效", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    private AppException tableTooLarge() {
+        return new AppException("TABLE_TOO_LARGE", "表格超出导出限制（2000 行、100 列、10000 个展开单元格）",
+                HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     private int[] tableWidths(List<Placement> placements, int count) {
-        int[] weights = new int[count];
-        java.util.Arrays.fill(weights, 8);
+        double[] loads = new double[count];
         for (Placement placement : placements) {
-            int content = Math.min(placement.cell.text().length(), 40 * placement.colspan);
-            int weight = Math.max(8, Math.round((float) content / placement.colspan));
+            // Full-width banners do not constrain relative column widths. Spread
+            // other merged cells across their columns; do not cap narrative text.
+            if (placement.colspan == count) continue;
+            double content = placement.cell.text().codePointCount(0, placement.cell.text().length());
+            content += placement.cell.select("img").size() * 40;
             for (int index = placement.column; index < Math.min(count, placement.column + placement.colspan); index++) {
-                weights[index] = Math.max(weights[index], weight);
+                loads[index] += content / placement.colspan;
             }
         }
-        int total = java.util.Arrays.stream(weights).sum();
+        // Square-root weighting balances total wrapping without starving short
+        // columns. Reserve a minimum before distributing the remaining width.
+        double[] weights = java.util.Arrays.stream(loads).map(load -> Math.sqrt(Math.max(8, load))).toArray();
+        double total = java.util.Arrays.stream(weights).sum();
+        int minimum = Math.min(720, CONTENT_WIDTH_DXA / count);
+        int remaining = CONTENT_WIDTH_DXA - minimum * count;
         int[] widths = new int[count];
         int used = 0;
         for (int index = 0; index < count; index++) {
-            widths[index] = Math.max(720, Math.round((float) CONTENT_WIDTH_DXA * weights[index] / total));
-            used += widths[index];
-        }
-        float scale = (float) CONTENT_WIDTH_DXA / used;
-        used = 0;
-        for (int index = 0; index < count; index++) {
-            widths[index] = Math.round(widths[index] * scale);
+            widths[index] = minimum + (int) Math.floor(remaining * weights[index] / total);
             used += widths[index];
         }
         widths[count - 1] += CONTENT_WIDTH_DXA - used;
@@ -500,7 +521,7 @@ public class HtmlToDocxService {
 
     public record ExportResult(byte[] content, String filename) {}
     private record Placement(int row, int column, int rowspan, int colspan, Element cell) {}
-    private record TableCellImage(int row, int cell, Element image, boolean bold) {}
+    private record TableCellImage(int row, int cell, Element image, boolean bold, int availableWidthDxa) {}
     private static final class RenderState {
         private final WordprocessingMLPackage document;
         private final MainDocumentPart main;

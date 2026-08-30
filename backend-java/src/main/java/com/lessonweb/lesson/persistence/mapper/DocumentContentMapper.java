@@ -12,5 +12,5 @@ import java.util.List;
 public interface DocumentContentMapper extends BaseMapper<DocumentContentEntity> {
     DocumentContentEntity selectActiveById(@Param("id") String id);
     List<DocumentSummaryRow> selectActiveSummaries();
-    int updateActive(DocumentContentEntity entity);
+    int updateActive(@Param("entity") DocumentContentEntity entity, @Param("expectedJson") String expectedJson);
 }

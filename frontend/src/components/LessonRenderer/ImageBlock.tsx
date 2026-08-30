@@ -20,6 +20,7 @@ export function ImageBlock({
           contentEditable={editable}
           suppressContentEditableWarning
           onBlur={(event) => {
+            if (!editable) return
             const next = event.currentTarget.textContent?.trim() || ''
             setCaption(next)
             onChange?.({ ...block, alt: next || null })

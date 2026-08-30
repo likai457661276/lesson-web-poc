@@ -14,6 +14,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
+import java.util.concurrent.RejectedExecutionException;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -33,6 +36,7 @@ public class DocumentParseService {
     private final MineruDocumentParser parser;
     private final AssetStorageService assets;
     private final MineruLessonDocumentAdapter adapter;
+    private final TaskExecutor executor;
 
     public DocumentParseService(
             LessonProperties properties,
@@ -40,7 +44,8 @@ public class DocumentParseService {
             ParseJobService jobs,
             MineruDocumentParser parser,
             AssetStorageService assets,
-            MineruLessonDocumentAdapter adapter
+            MineruLessonDocumentAdapter adapter,
+            @Qualifier("documentTaskExecutor") TaskExecutor executor
     ) {
         this.properties = properties;
         this.storage = storage;
@@ -48,6 +53,22 @@ public class DocumentParseService {
         this.parser = parser;
         this.assets = assets;
         this.adapter = adapter;
+        this.executor = executor;
+    }
+
+    public ParseJob submit(MultipartFile upload) {
+        Submission submission = createJob(upload);
+        try {
+            executor.execute(() -> processJob(submission.job().jobId(), submission.sourcePath()));
+        } catch (RejectedExecutionException exception) {
+            try {
+                jobs.fail(submission.job().jobId(), "PARSE_QUEUE_FULL", "解析队列已满，请稍后重试");
+            } finally {
+                storage.discardUnprocessedUpload(submission.job().jobId());
+            }
+            throw new AppException("PARSE_QUEUE_FULL", "解析队列已满，请稍后重试", HttpStatus.SERVICE_UNAVAILABLE, exception);
+        }
+        return submission.job();
     }
 
     public Submission createJob(MultipartFile upload) {
@@ -57,13 +78,18 @@ public class DocumentParseService {
         }
         String jobId = UUID.randomUUID().toString();
         Path sourcePath = storage.saveUpload(jobId, filename, upload);
-        return new Submission(jobs.create(jobId, filename), sourcePath);
+        try {
+            return new Submission(jobs.create(jobId, filename), sourcePath);
+        } catch (RuntimeException exception) {
+            storage.discardUnprocessedUpload(jobId);
+            throw exception;
+        }
     }
 
     public void processJob(String jobId, Path sourcePath) {
-        ParseJob job = jobs.processing(jobId);
         Instant startedAt = Instant.now();
         try {
+            ParseJob job = jobs.processing(jobId);
             MineruParseResult raw = parser.parse(sourcePath);
             storage.saveProviderResult(jobId, raw);
             Map<String, String> assetUrls = assets.collectMineruAssets(jobId, raw.resultDir());
@@ -82,9 +108,12 @@ public class DocumentParseService {
                 code = "ADAPTER_CONVERT_FAILED";
                 message = "文档转换失败";
             }
-            jobs.fail(jobId, code, message);
-            LOGGER.error("document_parse_failed jobId={} fileName={} errorCode={}",
-                    jobId, job.sourceFileName(), code, exception);
+            try {
+                jobs.fail(jobId, code, message);
+            } catch (RuntimeException persistenceFailure) {
+                LOGGER.error("document_parse_failure_state_not_saved jobId={}", jobId, persistenceFailure);
+            }
+            LOGGER.error("document_parse_failed jobId={} errorCode={}", jobId, code, exception);
         }
     }
 

@@ -19,8 +19,8 @@ export function HeadingBlock({
       contentEditable={editable}
       suppressContentEditableWarning
       onBlur={(event) => {
+        if (!editable) return
         const next = event.currentTarget.textContent ?? text
-        if (!next) return
         setText(next)
         onChange?.({ ...block, text: next })
       }}

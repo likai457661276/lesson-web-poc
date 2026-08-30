@@ -9,69 +9,87 @@ export interface FormulaValidationResult {
   message: string
 }
 
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+export interface DocumentSnapshot {
+  document: LessonDocument
+  etag: string
+}
+
+async function request(path: string, options: RequestInit = {}, timeoutMs = 30_000): Promise<Response> {
+  const signals = [AbortSignal.timeout(timeoutMs)]
+  if (options.signal) signals.push(options.signal)
+  const response = await fetch(path, { ...options, signal: AbortSignal.any(signals) })
+  if (!response.ok) throw new ApiError(await parseError(response), response.status)
+  return response
+}
+
 async function parseError(response: Response): Promise<string> {
   const payload = await response.json().catch(() => null)
-  return payload?.error?.message ?? `请求失败（HTTP ${response.status}）`
+  return payload?.error?.message ?? payload?.detail?.[0]?.msg ?? `请求失败（HTTP ${response.status}）`
+}
+
+async function snapshot(response: Response): Promise<DocumentSnapshot> {
+  const etag = response.headers.get('ETag')
+  if (!etag) throw new Error('服务端未返回文档 ETag，无法安全编辑')
+  return { document: await response.json(), etag }
 }
 
 export async function parseDocument(file: File): Promise<ParseJob> {
   const body = new FormData()
   body.append('file', file)
-  const response = await fetch('/api/documents/parse', { method: 'POST', body })
-  if (!response.ok) throw new Error(await parseError(response))
+  const response = await request('/api/documents/parse', { method: 'POST', body }, 600_000)
   return response.json()
 }
 
-export async function getParseJob(jobId: string): Promise<ParseJob> {
-  const response = await fetch(`/api/documents/${jobId}`)
-  if (!response.ok) throw new Error(await parseError(response))
+export async function getParseJob(jobId: string, signal?: AbortSignal): Promise<ParseJob> {
+  const response = await request(`/api/documents/${jobId}`, { signal })
   return response.json()
 }
 
 export async function listLessonDocuments(): Promise<LessonDocumentSummary[]> {
-  const response = await fetch('/api/lesson-documents')
-  if (!response.ok) throw new Error(await parseError(response))
+  const response = await request('/api/lesson-documents')
   return response.json()
 }
 
-export async function getLessonDocument(id: string): Promise<LessonDocument> {
-  const response = await fetch(`/api/lesson-documents/${id}`)
-  if (!response.ok) throw new Error(await parseError(response))
-  return response.json()
+export async function getLessonDocument(id: string): Promise<DocumentSnapshot> {
+  return snapshot(await request(`/api/lesson-documents/${id}`, { cache: 'no-store' }))
 }
 
-export async function updateLessonDocument(document: LessonDocument): Promise<LessonDocument> {
-  const response = await fetch(`/api/lesson-documents/${document.documentId}`, {
+export async function updateLessonDocument(document: LessonDocument, etag: string): Promise<DocumentSnapshot> {
+  const response = await request(`/api/lesson-documents/${document.documentId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'If-Match': etag },
     body: JSON.stringify(document),
   })
-  if (!response.ok) throw new Error(await parseError(response))
-  return response.json()
+  return snapshot(response)
 }
 
 export async function deleteLessonDocument(id: string): Promise<void> {
-  const response = await fetch(`/api/lesson-documents/${id}`, { method: 'DELETE' })
-  if (!response.ok) throw new Error(await parseError(response))
+  await request(`/api/lesson-documents/${id}`, { method: 'DELETE' })
 }
 
 export async function validateFormula(latex: string): Promise<FormulaValidationResult> {
-  const response = await fetch('/api/formulas/validate', {
+  const response = await request('/api/formulas/validate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ latex }),
   })
-  if (!response.ok) throw new Error(await parseError(response))
   return response.json()
 }
 
 export async function exportHtmlToDocx(html: string, filename: string): Promise<Blob> {
-  const response = await fetch('/api/documents/export-docx', {
+  const response = await request('/api/documents/export-docx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ html, filename }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
+  }, 120_000)
   return response.blob()
 }
 
@@ -81,11 +99,10 @@ export interface DocxExportInput {
 }
 
 export async function exportDocumentsToZip(documents: DocxExportInput[]): Promise<Blob> {
-  const response = await fetch('/api/documents/export-docx-batch', {
+  const response = await request('/api/documents/export-docx-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ documents }),
-  })
-  if (!response.ok) throw new Error(await parseError(response))
+  }, 600_000)
   return response.blob()
 }

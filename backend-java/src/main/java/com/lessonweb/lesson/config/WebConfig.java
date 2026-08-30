@@ -24,6 +24,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(frontendOrigins)
                 .allowedMethods("*")
                 .allowedHeaders("*")
+                .exposedHeaders("ETag")
                 .allowCredentials(true);
     }
 }

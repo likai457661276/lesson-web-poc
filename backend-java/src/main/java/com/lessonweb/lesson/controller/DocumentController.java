@@ -11,8 +11,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,27 +30,22 @@ public class DocumentController {
     private static final MediaType DOCX_MEDIA_TYPE = MediaType.parseMediaType(
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     private final DocumentParseService parseService;
-    private final TaskExecutor taskExecutor;
     private final HtmlToDocxService docxService;
     private final BatchDocxExportService batchDocxService;
 
     public DocumentController(
             DocumentParseService parseService,
-            @Qualifier("documentTaskExecutor") TaskExecutor taskExecutor,
             HtmlToDocxService docxService,
             BatchDocxExportService batchDocxService
     ) {
         this.parseService = parseService;
-        this.taskExecutor = taskExecutor;
         this.docxService = docxService;
         this.batchDocxService = batchDocxService;
     }
 
     @PostMapping(value = "/parse", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ParseJob> parse(@RequestPart("file") MultipartFile file) {
-        DocumentParseService.Submission submission = parseService.createJob(file);
-        taskExecutor.execute(() -> parseService.processJob(submission.job().jobId(), submission.sourcePath()));
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(submission.job());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(parseService.submit(file));
     }
 
     @GetMapping("/{jobId}")

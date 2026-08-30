@@ -29,6 +29,10 @@ public class DocxImageRenderer {
     private final AtomicLong drawingId = new AtomicLong(1);
 
     public boolean append(WordprocessingMLPackage document, P paragraph, Element image) {
+        return append(document, paragraph, image, 9000);
+    }
+
+    public boolean append(WordprocessingMLPackage document, P paragraph, Element image, int availableWidthDxa) {
         byte[] payload = decode(image.attr("src"));
         if (payload == null) {
             return false;
@@ -40,7 +44,8 @@ public class DocxImageRenderer {
             }
             long width = Math.round(dimensions.getWidth() / 96d * EMU_PER_INCH);
             long height = Math.round(dimensions.getHeight() / 96d * EMU_PER_INCH);
-            double scale = Math.min(1d, Math.min((double) MAX_WIDTH / width, (double) MAX_HEIGHT / height));
+            long maximumWidth = Math.min(MAX_WIDTH, Math.max(1, availableWidthDxa) * 635L);
+            double scale = Math.min(1d, Math.min((double) maximumWidth / width, (double) MAX_HEIGHT / height));
             width = Math.max(1, Math.round(width * scale));
             height = Math.max(1, Math.round(height * scale));
 

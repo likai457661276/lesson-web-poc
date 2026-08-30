@@ -1,5 +1,10 @@
 package com.lessonweb.lesson.docx;
 
+import org.apache.fontbox.ttf.TTFParser;
+import org.apache.fontbox.ttf.TrueTypeFont;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
+import org.jsoup.Jsoup;
+import org.jsoup.parser.Parser;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -18,14 +23,18 @@ import java.util.zip.ZipOutputStream;
 public class DocxFontService {
 
     private static final String FONT_FAMILY = "Noto Sans SC";
+    // Numbering and punctuation may be generated without document text nodes.
+    private static final String NUMBERING_CHARACTERS = " •·，。！？；：、‘’“”（）【】《》〈〉—–…-+−=×÷≤≥<>%°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     public byte[] embed(byte[] docx) throws IOException {
-        byte[] regular = loadFont("fonts/NotoSansSC-Regular.otf");
-        byte[] bold = loadFont("fonts/NotoSansSC-Bold.otf");
+        Map<String, byte[]> entries = readZip(docx);
+        String characters = Jsoup.parse(new String(entries.get("word/document.xml"), StandardCharsets.UTF_8),
+                "", Parser.xmlParser()).wholeText() + NUMBERING_CHARACTERS;
+        byte[] regular = subsetFont("fonts/NotoSansSC-Regular.ttf", characters);
+        byte[] bold = subsetFont("fonts/NotoSansSC-Bold.ttf", characters);
         UUID regularKey = UUID.nameUUIDFromBytes(regular);
         UUID boldKey = UUID.nameUUIDFromBytes(bold);
 
-        Map<String, byte[]> entries = readZip(docx);
         entries.put("word/fonts/NotoSansSC-regular.odttf", obfuscate(regular, regularKey));
         entries.put("word/fonts/NotoSansSC-bold.odttf", obfuscate(bold, boldKey));
         entries.put("word/styles.xml", stylesXml().getBytes(StandardCharsets.UTF_8));
@@ -37,9 +46,14 @@ public class DocxFontService {
         return writeZip(entries);
     }
 
-    private byte[] loadFont(String path) throws IOException {
-        try (var input = new ClassPathResource(path).getInputStream()) {
-            return input.readAllBytes();
+    private byte[] subsetFont(String path, String characters) throws IOException {
+        try (var input = new ClassPathResource(path).getInputStream();
+             var source = new RandomAccessReadBuffer(input);
+             TrueTypeFont font = new TTFParser().parse(source)) {
+            if ((font.getOS2Windows().getFsType() & (0x0002 | 0x0100 | 0x0200)) != 0) {
+                throw new IOException("Font license does not permit outline subsetting");
+            }
+            return TrueTypeFontSubset.create(font, characters);
         }
     }
 
@@ -109,7 +123,7 @@ public class DocxFontService {
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-                  <w:font w:name="Noto Sans SC"><w:altName w:val="Microsoft YaHei"/><w:charset w:val="86"/><w:family w:val="swiss"/><w:embedRegular r:id="rIdNotoRegular" w:fontKey="{%s}"/><w:embedBold r:id="rIdNotoBold" w:fontKey="{%s}"/></w:font>
+                  <w:font w:name="Noto Sans SC"><w:altName w:val="Microsoft YaHei"/><w:charset w:val="86"/><w:family w:val="swiss"/><w:embedRegular r:id="rIdNotoRegular" w:fontKey="{%s}" w:subsetted="true"/><w:embedBold r:id="rIdNotoBold" w:fontKey="{%s}" w:subsetted="true"/></w:font>
                   <w:font w:name="Cambria Math"><w:family w:val="roman"/></w:font>
                   <w:font w:name="Courier New"><w:family w:val="modern"/></w:font>
                 </w:fonts>

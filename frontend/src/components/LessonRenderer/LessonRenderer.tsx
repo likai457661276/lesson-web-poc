@@ -1,5 +1,5 @@
 import { Check, Download, PencilLine } from 'lucide-react'
-import { useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { exportHtmlToDocx } from '../../api/documents'
 import type { LessonBlock, LessonDocument } from '../../types/lesson-document'
 import { FormulaBlock } from './FormulaBlock'
@@ -14,18 +14,20 @@ function BlockRenderer({
   block,
   editable,
   onChange,
+  onDraftChange,
 }: {
   block: LessonBlock
   editable: boolean
   onChange: (block: LessonBlock) => void
+  onDraftChange: (id: string, dirty: boolean) => void
 }) {
   switch (block.type) {
     case 'heading': return <HeadingBlock block={block} editable={editable} onChange={onChange} />
     case 'paragraph': return <ParagraphBlock block={block} editable={editable} onChange={onChange} />
     case 'list': return <ListBlock block={block} editable={editable} onChange={onChange} />
-    case 'table': return <TableBlock block={block} editable={editable} onChange={onChange} />
+    case 'table': return <TableBlock block={block} editable={editable} onChange={onChange} onDraftChange={onDraftChange} />
     case 'image': return <ImageBlock block={block} editable={editable} onChange={onChange} />
-    case 'formula': return <FormulaBlock block={block} editable={editable} onChange={onChange} />
+    case 'formula': return <FormulaBlock block={block} editable={editable} onChange={onChange} onDraftChange={onDraftChange} />
   }
 }
 
@@ -38,22 +40,48 @@ export function LessonRenderer({
   editable = false,
   onEditableChange,
   onDocumentChange,
+  getPersistedDocument,
+  onUnsavedChange,
+  saveState,
+  saveError,
+  onRetrySave,
+  onReload,
   ref,
 }: {
   document: LessonDocument
   editable?: boolean
   onEditableChange?: (editable: boolean) => void
-  onDocumentChange?: (document: LessonDocument) => void | Promise<void>
+  onDocumentChange?: (document: LessonDocument) => void
+  getPersistedDocument: () => Promise<LessonDocument>
+  onUnsavedChange: (dirty: boolean) => void
+  saveState: 'saved' | 'saving' | 'failed' | 'conflict'
+  saveError: string
+  onRetrySave: () => void
+  onReload: () => void
   ref?: Ref<LessonRendererHandle>
 }) {
   const [title, setTitle] = useState(document.title)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   const draftRef = useRef(document)
+  const exportLockRef = useRef(false)
+  const [pendingDraft, setPendingDraft] = useState(false)
+  const dirtyFieldsRef = useRef(new Set<string>())
+  const markDirty = useCallback((id: string, dirty: boolean) => {
+    if (dirty) dirtyFieldsRef.current.add(id)
+    else dirtyFieldsRef.current.delete(id)
+    const pending = dirtyFieldsRef.current.size > 0
+    setPendingDraft(pending)
+    onUnsavedChange(pending)
+  }, [onUnsavedChange])
+
+  useEffect(() => () => onUnsavedChange(false), [onUnsavedChange])
 
   const persist = (next: LessonDocument) => {
+    if (!editable) return
     draftRef.current = next
-    void onDocumentChange?.(next)
+    onDocumentChange?.(next)
+    markDirty('text', false)
   }
 
   const updateBlock = (block: LessonBlock) => {
@@ -64,16 +92,19 @@ export function LessonRenderer({
   }
 
   const downloadDocx = async () => {
-    if (exporting) return
+    if (exportLockRef.current) return
+    exportLockRef.current = true
     setExporting(true)
     setExportError('')
     try {
-      const { html, filename } = await prepareDocxExport(draftRef.current)
+      const persisted = await getPersistedDocument()
+      const { html, filename } = await prepareDocxExport(persisted)
       const blob = await exportHtmlToDocx(html, filename)
       downloadBlob(blob, filename)
     } catch (reason) {
       setExportError(reason instanceof Error ? reason.message : 'DOCX 导出失败')
     } finally {
+      exportLockRef.current = false
       setExporting(false)
     }
   }
@@ -81,7 +112,10 @@ export function LessonRenderer({
   useImperativeHandle(ref, () => ({ downloadDocx }))
 
   return (
-    <article className={`lesson-document ${editable ? 'is-editing' : ''}`}>
+    <article className={`lesson-document ${editable ? 'is-editing' : ''}`} onInputCapture={(event) => {
+      const target = event.target as HTMLElement
+      if (editable && target.closest('[contenteditable="true"]') && !target.closest('textarea, input')) markDirty('text', true)
+    }}>
         <div className="document-edit-toolbar">
           <span className={exportError ? 'export-error' : ''}>{exportError || (editable ? '编辑模式：点击文字或表格单元格即可修改，离开后会保存到服务端' : '内容可在浏览器内基础编辑并导出；结果保存在服务端')}</span>
           <div className="document-toolbar-actions">
@@ -98,6 +132,12 @@ export function LessonRenderer({
             </button>
           </div>
         </div>
+        <div className={`document-save-status ${saveState === 'failed' || saveState === 'conflict' ? 'has-error' : ''}`} role="status">
+          {saveState === 'failed' || saveState === 'conflict' ? `未保存：${saveError}`
+            : pendingDraft ? '有未应用的编辑，请完成编辑或取消' : saveState === 'saving' ? '正在保存…' : '已保存到服务端'}
+          {saveState === 'failed' && <button type="button" onClick={onRetrySave}>重试保存</button>}
+          {(saveState === 'failed' || saveState === 'conflict') && <button type="button" onClick={onReload}>重新加载服务端版本</button>}
+        </div>
         <header className="document-title">
           <span>{document.metadata.sourceType.toUpperCase()} · LessonDocument {document.version}</span>
           <h1
@@ -105,7 +145,8 @@ export function LessonRenderer({
             contentEditable={editable}
             suppressContentEditableWarning
             onBlur={(event) => {
-              const nextTitle = event.currentTarget.textContent?.trim() || title
+              if (!editable) return
+              const nextTitle = event.currentTarget.textContent?.trim() ?? ''
               setTitle(nextTitle)
               persist({ ...draftRef.current, title: nextTitle })
             }}
@@ -121,7 +162,7 @@ export function LessonRenderer({
               className={`document-block${block.type === 'heading' ? ` document-block-heading-${block.alignment}` : ''}`}
               key={block.id}
             >
-              <BlockRenderer block={block} editable={editable} onChange={updateBlock} />
+              <BlockRenderer block={block} editable={editable} onChange={updateBlock} onDraftChange={markDirty} />
             </div>
           ))}
         </div>

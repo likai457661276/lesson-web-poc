@@ -101,6 +101,34 @@ class DocumentParseServiceTest {
                 .hasMessage("仅支持 PDF 格式文件");
     }
 
+    @Test
+    void rejectedSubmissionFailsJobAndRemovesOnlyItsUnprocessedUpload() throws Exception {
+        LocalStorage storage = storage(new ObjectMapper());
+        ParseJobService jobs = jobService();
+        DocumentParseService service = new DocumentParseService(properties(), storage, jobs,
+                mock(MineruDocumentParser.class), new AssetStorageService(storage), new MineruLessonDocumentAdapter(),
+                task -> { throw new org.springframework.core.task.TaskRejectedException("full"); });
+        assertThatThrownBy(() -> service.submit(new MockMultipartFile(
+                "file", "lesson.pdf", "application/pdf", "%PDF-1.7".getBytes())))
+                .isInstanceOf(com.lessonweb.lesson.exception.AppException.class)
+                .satisfies(error -> assertThat(((com.lessonweb.lesson.exception.AppException) error).status().value()).isEqualTo(503));
+        org.mockito.ArgumentCaptor<String> id = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(jobs).fail(id.capture(), org.mockito.ArgumentMatchers.eq("PARSE_QUEUE_FULL"), anyString());
+        assertThat(jobs.get(id.getValue()).status()).isEqualTo(JobStatus.FAILED);
+        assertThat(storage.jobDir(id.getValue())).doesNotExist();
+    }
+
+    @Test
+    void failedDatabaseInsertDoesNotLeaveAnUpload() throws Exception {
+        LocalStorage storage = storage(new ObjectMapper());
+        ParseJobService jobs = mock(ParseJobService.class);
+        when(jobs.create(anyString(), anyString())).thenThrow(new IllegalStateException("database unavailable"));
+        assertThatThrownBy(() -> service(storage, jobs, mock(MineruDocumentParser.class)).submit(new MockMultipartFile(
+                "file", "lesson.pdf", "application/pdf", "%PDF-1.7".getBytes())))
+                .isInstanceOf(IllegalStateException.class);
+        try (var entries = Files.list(tempDir)) { assertThat(entries).isEmpty(); }
+    }
+
     private DocumentParseService service(
             LocalStorage storage,
             ParseJobService jobs,
@@ -108,7 +136,7 @@ class DocumentParseServiceTest {
     ) {
         return new DocumentParseService(
                 properties(), storage, jobs, parser, new AssetStorageService(storage),
-                new MineruLessonDocumentAdapter());
+                new MineruLessonDocumentAdapter(), Runnable::run);
     }
 
     private LocalStorage storage(ObjectMapper objectMapper) {

@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -45,7 +44,7 @@ class BatchDocxExportContractTest {
         var formulas = new DocxFormulaRenderer(new LatexToMathmlConverter(), new MathmlToOmmlConverter());
         var docx = new HtmlToDocxService(formulas, new DocxImageRenderer(), new DocxFontService());
         mvc = MockMvcBuilders.standaloneSetup(new DocumentController(
-                        mock(DocumentParseService.class), new SyncTaskExecutor(), docx, new BatchDocxExportService(docx)))
+                        mock(DocumentParseService.class), docx, new BatchDocxExportService(docx)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
