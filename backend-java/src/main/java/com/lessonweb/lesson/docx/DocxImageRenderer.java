@@ -1,5 +1,6 @@
 package com.lessonweb.lesson.docx;
 
+import com.lessonweb.lesson.exception.AppException;
 import org.docx4j.dml.wordprocessingDrawing.Inline;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.BinaryPartAbstractImage;
@@ -8,6 +9,7 @@ import org.docx4j.wml.P;
 import org.docx4j.wml.R;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
+import org.springframework.http.HttpStatus;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -28,19 +30,15 @@ public class DocxImageRenderer {
     private static final long MAX_HEIGHT = Math.round(7.5 * EMU_PER_INCH);
     private final AtomicLong drawingId = new AtomicLong(1);
 
-    public boolean append(WordprocessingMLPackage document, P paragraph, Element image) {
-        return append(document, paragraph, image, 9000);
-    }
-
-    public boolean append(WordprocessingMLPackage document, P paragraph, Element image, int availableWidthDxa) {
+    public void append(WordprocessingMLPackage document, P paragraph, Element image, int availableWidthDxa) {
         byte[] payload = decode(image.attr("src"));
         if (payload == null) {
-            return false;
+            throw invalidImage();
         }
         try {
             BufferedImage dimensions = ImageIO.read(new ByteArrayInputStream(payload));
             if (dimensions == null || dimensions.getWidth() < 1 || dimensions.getHeight() < 1) {
-                return false;
+                throw invalidImage();
             }
             long width = Math.round(dimensions.getWidth() / 96d * EMU_PER_INCH);
             long height = Math.round(dimensions.getHeight() / 96d * EMU_PER_INCH);
@@ -57,10 +55,14 @@ public class DocxImageRenderer {
             R run = new R();
             run.getContent().add(drawing);
             paragraph.getContent().add(run);
-            return true;
         } catch (Exception ignored) {
-            return false;
+            throw invalidImage();
         }
+    }
+
+    private AppException invalidImage() {
+        return new AppException("DOCX_IMAGE_INVALID", "图片无法解码或格式不受支持，请更换图片后重试",
+                HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     private byte[] decode(String source) {

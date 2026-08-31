@@ -35,6 +35,105 @@ class HtmlToDocxServiceTest {
     }
 
     @Test
+    void preservesParagraphsAndListItemsInsideCells() throws Exception {
+        var xml = documentXml("<table><tr><td><p>Observation</p><p>Conclusion</p>"
+                + "<ol><li>Inspect</li><li>Measure</li></ol></td></tr></table>");
+        var cell = xml.getElementsByTag("w:tc").first();
+        assertThat(cell.getElementsByTag("w:p")).hasSize(4);
+        assertThat(cell.getElementsByTag("w:p").stream().map(p -> String.join("", p.getElementsByTag("w:t").eachText())).toList())
+                .containsExactly("Observation", "Conclusion", "Inspect", "Measure");
+        assertThat(cell.getElementsByTag("w:numPr")).hasSize(2);
+    }
+
+    @Test
+    void nestsTablesWithinCellWidthWithoutDuplicatingContentOrCaptions() throws Exception {
+        var xml = documentXml("<table><tr><td>Before<table><caption>Inner caption</caption>"
+                + "<tr><td>North</td><td>South</td></tr></table><p>After</p></td><td>Sibling</td></tr></table>");
+        assertThat(xml.getElementsByTag("w:tbl")).hasSize(2);
+        assertThat(xml.getElementsByTag("w:tr")).hasSize(2);
+        assertThat(xml.getElementsByTag("w:t").eachText()).containsExactly("Before", "Inner caption", "North", "South", "After", "Sibling");
+        var outerCell = xml.getElementsByTag("w:tc").first();
+        int available = Integer.parseInt(outerCell.getElementsByTag("w:tcW").first().attr("w:w")) - 280;
+        var inner = outerCell.getElementsByTag("w:tbl").first();
+        assertThat(inner.getElementsByTag("w:tblInd").first().attr("w:w")).isEqualTo("0");
+        assertThat(Integer.parseInt(inner.getElementsByTag("w:tblW").first().attr("w:w"))).isEqualTo(available);
+        assertThat(inner.getElementsByTag("w:gridCol").stream().mapToInt(col -> Integer.parseInt(col.attr("w:w"))).sum()).isEqualTo(available);
+        assertThat(outerCell.children().last().tagName()).isEqualTo("w:p");
+        var endingInTable = documentXml("<table><tr><td><table><tr><td>End</td></tr></table></td></tr></table>");
+        assertThat(endingInTable.getElementsByTag("w:tc").first().children().last().tagName()).isEqualTo("w:p");
+    }
+
+    @Test
+    void givesIndependentAndNestedListsTheirOwnNumberingAndKeepsNodeOrder() throws Exception {
+        var parts = unzip(service.export("<ol><li>Alpha<ol><li>Nested</li></ol><p>Continuation</p></li><li>Beta</li></ol>"
+                + "<p>Divider</p><ol start='4'><li>Gamma</li></ol><table><tr><td><ol><li>Delta</li></ol></td></tr></table>", "lists").content());
+        var xml = Jsoup.parse(text(parts, "word/document.xml"), "", Parser.xmlParser());
+        assertThat(xml.getElementsByTag("w:t").eachText()).containsExactly("Alpha", "Nested", "Continuation", "Beta", "Divider", "Gamma", "Delta");
+        var ids = xml.getElementsByTag("w:numId").eachAttr("w:val");
+        assertThat(ids).hasSize(5);
+        assertThat(ids.get(0)).isEqualTo(ids.get(2));
+        assertThat(java.util.Set.of(ids.get(0), ids.get(1), ids.get(3), ids.get(4))).hasSize(4);
+        var numbering = Jsoup.parse(text(parts, "word/numbering.xml"), "", Parser.xmlParser());
+        assertThat(numbering.getElementsByTag("w:startOverride").eachAttr("w:val")).containsExactly("1", "1", "4", "1");
+        assertThat(xml.getElementsByTag("w:ilvl").eachAttr("w:val")).containsExactly("0", "1", "0", "0", "0");
+        var continuation = xml.getElementsByTag("w:p").stream().filter(p -> p.getElementsByTag("w:t").eachText().contains("Continuation")).findFirst().orElseThrow();
+        assertThat(continuation.getElementsByTag("w:numPr")).isEmpty();
+        assertThat(continuation.getElementsByTag("w:ind").first().attr("w:left")).isEqualTo("720");
+    }
+
+    @Test
+    void preservesAllHeadingLevelsAndProtocolWhitespace() throws Exception {
+        StringBuilder html = new StringBuilder();
+        for (int level = 1; level <= 6; level++) html.append("<h").append(level).append(" class='lesson-heading lesson-heading-right'>Topic  ")
+                .append(level).append("</h").append(level).append(">");
+        html.append("<p class='lesson-paragraph'>Line  one\r\nLine\ttwo\nEnd</p><pre>A\nB\tC</pre>");
+        var parts = unzip(service.export(html.toString(), "headings").content());
+        var xml = Jsoup.parse(text(parts, "word/document.xml"), "", Parser.xmlParser());
+        assertThat(xml.getElementsByTag("w:pStyle").eachAttr("w:val"))
+                .containsExactly("LessonHeading1", "LessonHeading2", "LessonHeading3", "LessonHeading4", "LessonHeading5", "LessonHeading6");
+        assertThat(xml.getElementsByTag("w:t").stream().map(org.jsoup.nodes.Element::wholeText).toList())
+                .contains("Topic  6", "Line  one", "Line", "two", "End");
+        assertThat(xml.getElementsByTag("w:br")).hasSize(3);
+        assertThat(xml.getElementsByTag("w:tab")).hasSize(2);
+        assertThat(xml.getElementsByTag("w:jc").eachAttr("w:val")).containsOnly("right");
+        var styles = Jsoup.parse(text(parts, "word/styles.xml"), "", Parser.xmlParser());
+        for (int level = 1; level <= 6; level++) {
+            final String id = "LessonHeading" + level;
+            var style = styles.getElementsByTag("w:style").stream().filter(s -> s.attr("w:styleId").equals(id)).findFirst().orElseThrow();
+            assertThat(style.getElementsByTag("w:outlineLvl").first().attr("w:val")).isEqualTo(Integer.toString(level - 1));
+        }
+    }
+
+    @Test
+    void rejectsUndecodableImagesRegardlessOfPlacementOrAltText() {
+        for (String image : new String[]{"<img src='data:image/png;base64,AAAA'>", "<img alt='description' src='data:image/png;base64,broken!'>",
+                "<img src='data:image/webp;base64,AAAA'>", "<img src='/missing.png'>"}) {
+            for (String html : new String[]{"<p>Valid</p>" + image, "<table><tr><td>Valid" + image + "</td></tr></table>", "<figure>" + image + "</figure>"}) {
+                assertThatThrownBy(() -> service.export(html, "invalid-image"))
+                        .isInstanceOf(AppException.class)
+                        .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCX_IMAGE_INVALID"));
+            }
+        }
+    }
+
+    private org.jsoup.nodes.Document documentXml(String html) throws Exception {
+        return Jsoup.parse(text(unzip(service.export(html, "independent").content()), "word/document.xml"), "", Parser.xmlParser());
+    }
+
+    @Test
+    void rejectsTablesWithoutRoomForCellContentAndUnsupportedListNumbering() {
+        assertThatThrownBy(() -> service.export("<table><tr>" + "<td>x</td>".repeat(40) + "</tr></table>", "wide"))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCX_TABLE_TOO_NARROW"));
+        for (String html : new String[]{"<ol reversed><li>x</li></ol>", "<ol start='oops'><li>x</li></ol>",
+                "<ol><li value='4'>x</li></ol>", "<ul><li>".repeat(10) + "x" + "</li></ul>".repeat(10)}) {
+            assertThatThrownBy(() -> service.export(html, "list"))
+                    .isInstanceOf(AppException.class)
+                    .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCX_LIST_UNSUPPORTED"));
+        }
+    }
+
+    @Test
     void embedsSmallReadableSubsetsWithChineseAndNumberingGlyphs() throws Exception {
         int supplementary;
         try (var input = new ClassPathResource("fonts/NotoSansSC-Regular.ttf").getInputStream();

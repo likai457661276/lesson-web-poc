@@ -50,7 +50,7 @@ pnpm dev
 - `POST /api/documents/parse`：上传支持的文件并创建异步解析任务
 - `GET /api/documents/{jobId}`：查询任务状态和 LessonDocument
 - `POST /api/formulas/validate`：校验 LaTeX 结构并返回规范化结果（Symja）
-- `POST /api/documents/export-docx`：把当前 Web 预览 HTML 转换为 DOCX 下载
+- `POST /api/documents/export-docx`：把基于最新服务端 LessonDocument 重建的导出 HTML 转换为 DOCX 下载
 - `POST /api/documents/export-docx-batch`：接收 `{"documents":[{"html":"<p>内容</p>","filename":"课程.docx"}]}`，返回包含各篇 DOCX 的 ZIP
 - `GET /api/assets/{jobId}/{filename}`：读取提取图片
 - `GET /api/health`：健康检查
@@ -61,7 +61,7 @@ pnpm dev
 
 任务文件写入 `data/jobs/{jobId}/`。后端将任务、完整文档和资源元数据写入 MySQL，前端以服务端文档库为唯一真源。软删除仅设置数据库聚合根的删除标志，数据库明细和 `DATA_DIR/{jobId}` 文件不会物理删除。
 
-上传后进入 `/jobs/{jobId}`，刷新该页面会从服务端恢复查询；完成后自动打开文档。表格标题、可可靠恢复的多栏阅读顺序和表格内图文顺序在 Web/DOCX 中保留；无法可靠恢复的多栏文字带人工复核提示。DOCX 不支持的公式会明确报错，不会以原始 LaTeX 冒充成功导出。
+上传后进入 `/jobs/{jobId}`，刷新该页面会从服务端恢复查询；完成后自动打开文档。表格标题、可可靠恢复的多栏阅读顺序和表格内图文顺序在 Web/DOCX 中保留；无法可靠恢复的多栏文字带人工复核提示。DOCX 保留单元格段落、列表、嵌套表格、六级标题和正文换行；独立列表重新起号。无法转换的公式结构、损坏图片及宽度不足的表格明确报错，不以缺失或失真的内容冒充成功导出。当前使用 Letter 纵向纸张重排，不承诺原 PDF 的纸型和分页还原。
 
 解析保留上游标题、正文与表格边界，不按几何相近猜测合并。空结果、缺图或无法转换的结构会使任务明确失败；未知纯文本保留并标记复核。当前仍是需要人工检查的教案解析工具，完整性检查不能证明 OCR 无遗漏或所有复杂版面均正确，适用范围与验证记录见 `docs/TEST_CASES.md`。
 

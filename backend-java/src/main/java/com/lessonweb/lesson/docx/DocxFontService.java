@@ -161,6 +161,7 @@ public class DocxFontService {
                   %s
                   %s
                   %s
+                  %s
                 </w:styles>
                 """.formatted(
                 paragraphStyle("Normal", "Normal", 22, "000000", false, 0, 120),
@@ -171,12 +172,24 @@ public class DocxFontService {
                 paragraphStyle("Heading1", "Heading 1", 32, "2E74B5", true, 320, 160),
                 paragraphStyle("Heading2", "Heading 2", 26, "2E74B5", true, 240, 120),
                 paragraphStyle("Heading3", "Heading 3", 24, "1F4D78", true, 160, 80),
-                paragraphStyle("Caption", "Caption", 18, "68736E", false, 0, 120));
+                paragraphStyle("Caption", "Caption", 18, "68736E", false, 0, 120),
+                additionalHeadingStyles());
+    }
+
+    private String additionalHeadingStyles() {
+        StringBuilder result = new StringBuilder();
+        for (int level = 4; level <= 6; level++) {
+            result.append(paragraphStyle("LessonHeading" + level, "Lesson Heading " + level, 24, "000000", true, 160, 80));
+            result.append(paragraphStyle("Heading" + level, "Heading " + level, 24, "1F4D78", true, 160, 80));
+        }
+        return result.toString();
     }
 
     private String paragraphStyle(String id, String name, int halfPoints, String color, boolean bold, int before, int after) {
+        String outline = id.matches("(?:Lesson)?Heading[1-6]")
+                ? "<w:outlineLvl w:val=\"" + (Character.digit(id.charAt(id.length() - 1), 10) - 1) + "\"/><w:keepNext/>" : "";
         return "<w:style w:type=\"paragraph\"" + ("Normal".equals(id) ? " w:default=\"true\"" : "") + " w:styleId=\"" + id + "\"><w:name w:val=\"" + name + "\"/>"
                 + ("Normal".equals(id) ? "<w:qFormat/>" : "<w:basedOn w:val=\"Normal\"/><w:qFormat/>")
-                + "<w:pPr><w:spacing w:before=\"" + before + "\" w:after=\"" + after + "\"/></w:pPr><w:rPr><w:rFonts w:ascii=\"" + FONT_FAMILY + "\" w:hAnsi=\"" + FONT_FAMILY + "\" w:eastAsia=\"" + FONT_FAMILY + "\"/><w:color w:val=\"" + color + "\"/><w:sz w:val=\"" + halfPoints + "\"/>" + (bold ? "<w:b/>" : "") + "</w:rPr></w:style>";
+                + "<w:pPr>" + outline + "<w:spacing w:before=\"" + before + "\" w:after=\"" + after + "\"/></w:pPr><w:rPr><w:rFonts w:ascii=\"" + FONT_FAMILY + "\" w:hAnsi=\"" + FONT_FAMILY + "\" w:eastAsia=\"" + FONT_FAMILY + "\"/><w:color w:val=\"" + color + "\"/><w:sz w:val=\"" + halfPoints + "\"/>" + (bold ? "<w:b/>" : "") + "</w:rPr></w:style>";
     }
 }

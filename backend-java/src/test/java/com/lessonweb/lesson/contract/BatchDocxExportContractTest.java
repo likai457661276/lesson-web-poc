@@ -102,6 +102,21 @@ class BatchDocxExportContractTest {
     }
 
     @Test
+    void imageDecodeFailuresRejectSingleAndWholeBatchWithoutDownloadHeaders() throws Exception {
+        var invalid = Map.of("html", "<p>Content</p><img src='data:image/png;base64,AAAA'>", "filename", "invalid.docx");
+        var mapper = new ObjectMapper();
+        for (String endpoint : new String[]{"/api/documents/export-docx", ENDPOINT}) {
+            Object request = endpoint.equals(ENDPOINT)
+                    ? Map.of("documents", java.util.List.of(Map.of("html", "<p>Valid</p>"), invalid)) : invalid;
+            mvc.perform(post(endpoint).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(request)))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(header().doesNotExist("Content-Disposition"))
+                    .andExpect(jsonPath("$.error.code").value("DOCX_IMAGE_INVALID"));
+        }
+    }
+
+    @Test
     void failsEntireBatchInsteadOfReturningPartialArchive() throws Exception {
         mvc.perform(post(ENDPOINT).contentType(MediaType.APPLICATION_JSON).content("""
                 {"documents":[{"html":"<p>有效文档</p>"},{"html":"<script>bad</script>"}]}

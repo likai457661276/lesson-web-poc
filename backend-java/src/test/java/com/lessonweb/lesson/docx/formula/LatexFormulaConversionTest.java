@@ -36,6 +36,33 @@ class LatexFormulaConversionTest {
     }
 
     @Test
+    void preservesOverbarsUnderbarsAndAccentsAsStructures() {
+        String bars = omml.convert(latex.convert("\\overline{PQ}+\\underline{uv}"));
+        assertThat(bars).contains("<m:bar>", "m:val=\"top\"", "m:val=\"bot\"");
+        var xml = org.jsoup.Jsoup.parse(bars, "", org.jsoup.parser.Parser.xmlParser());
+        assertThat(xml.getElementsByTag("m:bar")).hasSize(2);
+        assertThat(xml.getElementsByTag("m:bar").get(0).getElementsByTag("m:t").eachText()).containsExactly("P", "Q");
+        assertThat(xml.getElementsByTag("m:bar").get(1).getElementsByTag("m:t").eachText()).containsExactly("u", "v");
+        assertThat(omml.convert(latex.convert("\\hat{z}+\\vec{v}"))).contains("<m:acc>", "<m:chr");
+    }
+
+    @Test
+    void rejectsUnknownMathmlInsteadOfFlatteningItsChildren() {
+        for (String structure : new String[]{"<mtable><mtr><mtd><mi>x</mi></mtd></mtr></mtable>",
+                "<mphantom><mi>y</mi></mphantom>", "<munder><mi>lim</mi><mi>x</mi></munder>"}) {
+            assertThatThrownBy(() -> omml.convert("<math xmlns='http://www.w3.org/1998/Math/MathML'>" + structure + "</math>"))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void ignoresFormattingWhitespaceBetweenOperandsAndNonPresentationAnnotations() {
+        String output = omml.convert("<math xmlns='http://www.w3.org/1998/Math/MathML'><semantics><mfrac>\n<mi>a</mi>\n<mi>b</mi>\n</mfrac>"
+                + "<annotation encoding='application/x-tex'>a/b</annotation></semantics></math>");
+        assertThat(output).contains("<m:num><m:r>", "<m:den><m:r>").doesNotContain("a/b");
+    }
+
+    @Test
     void rejectsUnsupportedCommands() {
         assertThatThrownBy(() -> latex.convert("\\unknown{x}"))
                 .isInstanceOf(IllegalArgumentException.class);

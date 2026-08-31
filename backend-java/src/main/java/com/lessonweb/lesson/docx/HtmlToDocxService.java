@@ -38,6 +38,9 @@ public class HtmlToDocxService {
     private static final int MAX_TABLE_ROWS = 2_000;
     private static final int MAX_TABLE_COLUMNS = 100;
     private static final int MAX_TABLE_CELLS = 10_000;
+    private static final int CELL_MARGIN_DXA = 140;
+    private static final Set<String> BLOCK_TAGS = Set.of("p", "pre", "blockquote", "div", "article", "section",
+            "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "table", "figure");
     private static final Pattern INVALID_FILENAME = Pattern.compile("[\\x00-\\x1f<>:\"/\\\\|?*]");
     private final DocxFormulaRenderer formulas;
     private final DocxImageRenderer images;
@@ -56,9 +59,7 @@ public class HtmlToDocxService {
             WordprocessingMLPackage document = WordprocessingMLPackage.createPackage();
             configureDocument(document);
             RenderState state = new RenderState(document);
-            for (Node child : source.body().childNodes()) {
-                appendBlock(child, state);
-            }
+            appendFlow(source.body(), state);
             if (!state.hasContent) {
                 throw new AppException("EMPTY_HTML", "HTML 中没有可导出的内容", HttpStatus.UNPROCESSABLE_ENTITY);
             }
@@ -90,29 +91,38 @@ public class HtmlToDocxService {
         }
     }
 
-    private void appendBlock(Node node, RenderState state) throws Exception {
-        if (node instanceof TextNode textNode) {
-            String text = textNode.text().trim();
-            if (!text.isEmpty()) {
-                state.main.addObject(paragraph(null, null, text));
-                state.hasContent = true;
+    /** Buffer adjacent inline nodes, flushing at real block boundaries in body, cells and list items. */
+    private void appendFlow(Element parent, RenderState state) throws Exception {
+        P inline = paragraph(null, null, null);
+        for (Node child : parent.childNodes()) {
+            if (child instanceof Element element && (BLOCK_TAGS.contains(element.normalName())
+                    || element.hasClass("lesson-formula")
+                    || ("img".equals(element.normalName()) && parent.closest("td, th, li") == null))) {
+                if (hasMeaningfulContent(inline)) state.add(inline);
+                inline = paragraph(null, null, null);
+                appendBlock(element, state);
+            } else {
+                if (child instanceof TextNode text && text.isBlank() && !hasMeaningfulContent(inline)) continue;
+                appendInline(child, inline, state.style, state);
             }
-            return;
         }
-        if (!(node instanceof Element element) || element.hasClass("document-title")) {
+        if (hasMeaningfulContent(inline)) state.add(inline);
+    }
+
+    private void appendBlock(Element element, RenderState state) throws Exception {
+        if (element.hasClass("document-title")) {
             return;
         }
         String tag = element.normalName();
         if (tag.matches("h[1-6]")) {
-            int level = Math.min(3, Integer.parseInt(tag.substring(1)));
+            int level = Integer.parseInt(tag.substring(1));
             boolean lesson = element.hasClass("lesson-heading");
             String style = element.hasAttr("data-docx-title") || (level == 1 && !state.hasContent && !lesson)
                     ? "HTMLTitle" : lesson ? "LessonHeading" + level : "Heading" + level;
             P paragraph = paragraph(style, alignment(element), null);
-            appendInline(element, paragraph, InlineStyle.PLAIN, state);
+            appendInline(element, paragraph, state.style, state);
             if (hasMeaningfulContent(paragraph)) {
-                state.main.addObject(paragraph);
-                state.hasContent = true;
+                state.add(paragraph);
             }
             return;
         }
@@ -121,32 +131,31 @@ public class HtmlToDocxService {
             if ("pre".equals(tag)) {
                 appendText(paragraph, element.wholeText(), new InlineStyle(false, false, false, false, false, "Courier New", null));
             } else {
-                appendInline(element, paragraph, InlineStyle.PLAIN, state);
+                appendInline(element, paragraph, state.style, state);
             }
             if ("blockquote".equals(tag)) {
                 paragraph.setPPr((org.docx4j.wml.PPr) XmlUtils.unmarshalString("<w:pPr xmlns:w=\"" + W_NS + "\"><w:ind w:left=\"432\" w:right=\"432\"/></w:pPr>"));
             }
             if (hasMeaningfulContent(paragraph)) {
-                state.main.addObject(paragraph);
-                state.hasContent = true;
+                state.add(paragraph);
             }
             return;
         }
         if ("ul".equals(tag) || "ol".equals(tag)) {
-            appendList(element, state, "ol".equals(tag) ? 2 : 1, 0);
+            appendList(element, state);
             return;
         }
         if ("table".equals(tag)) {
-            Element caption = element.selectFirst("caption");
+            Element caption = directChildren(element, Set.of("caption")).stream().findFirst().orElse(null);
             if (caption != null && !caption.text().isBlank()) {
                 P paragraph = paragraph("Caption", null, null);
-                appendInline(caption, paragraph, InlineStyle.PLAIN, state);
-                state.main.addObject(paragraph);
+                paragraph.getPPr().setKeepNext(new org.docx4j.wml.BooleanDefaultTrue());
+                appendInline(caption, paragraph, state.style, state);
+                state.add(paragraph);
             }
-            Object table = buildTable(element, state.document);
+            Object table = buildTable(element, state);
             if (table != null) {
-                state.main.addObject(table);
-                state.hasContent = true;
+                state.add(table);
             }
             return;
         }
@@ -159,7 +168,7 @@ public class HtmlToDocxService {
             if (caption != null && !caption.text().isBlank()) {
                 P paragraph = paragraph("Caption", "center", null);
                 appendInline(caption, paragraph, InlineStyle.PLAIN, state);
-                state.main.addObject(paragraph);
+                state.add(paragraph);
             }
             return;
         }
@@ -167,25 +176,23 @@ public class HtmlToDocxService {
             appendStandaloneImage(element, state);
             return;
         }
-        if (element.hasAttr("data-latex")) {
+        if (element.hasAttr("data-latex") || element.hasClass("lesson-formula")) {
             P paragraph = paragraph(null, "center", null);
-            appendFormula(paragraph, element.attr("data-latex"));
-            state.main.addObject(paragraph);
-            state.hasContent = true;
+            appendInline(element, paragraph, state.style, state);
+            state.add(paragraph);
             return;
         }
-        for (Node child : element.childNodes()) {
-            appendBlock(child, state);
-        }
+        appendFlow(element, state);
     }
 
     private void appendInline(Node node, P paragraph, InlineStyle style, RenderState state) throws Exception {
-        appendInline(node, paragraph, style, state, CONTENT_WIDTH_DXA);
+        appendInline(node, paragraph, style, state, state.availableWidth);
     }
 
     private void appendInline(Node node, P paragraph, InlineStyle style, RenderState state, int availableWidth) throws Exception {
         if (node instanceof TextNode textNode) {
-            String text = textNode.getWholeText().replaceAll("[\\t\\r\\n ]+", " ");
+            String text = textNode.getWholeText();
+            if (!preservesWhitespace(textNode)) text = text.replaceAll("[\\t\\r\\n ]+", " ");
             if (!text.isEmpty()) {
                 appendText(paragraph, text, style);
             }
@@ -204,9 +211,7 @@ public class HtmlToDocxService {
             return;
         }
         if ("img".equals(tag)) {
-            if (!images.append(state.document, paragraph, element, availableWidth) && !element.attr("alt").isBlank()) {
-                appendText(paragraph, "[图片：" + element.attr("alt").trim() + "]", style.withItalic());
-            }
+            images.append(state.document, paragraph, element, availableWidth);
             return;
         }
         if (Set.of("script", "style", "button", "input", "textarea", "svg").contains(tag)) {
@@ -218,25 +223,66 @@ public class HtmlToDocxService {
         }
     }
 
-    private void appendList(Element list, RenderState state, int numId, int level) throws Exception {
+    private boolean preservesWhitespace(Node node) {
+        for (Node ancestor = node.parent(); ancestor instanceof Element element; ancestor = ancestor.parent()) {
+            if (element.hasClass("lesson-heading") || element.hasClass("lesson-paragraph")
+                    || "pre".equals(element.normalName()) || "caption".equals(element.normalName())) return true;
+        }
+        return false;
+    }
+
+    private void appendList(Element list, RenderState state) throws Exception {
+        int level = state.listLevel;
+        if (level > 8 || list.hasAttr("reversed") || list.hasAttr("type")) {
+            throw new AppException("DOCX_LIST_UNSUPPORTED", "列表嵌套层级或编号样式不受支持", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        int numId = newListNumbering(list, state, level);
         for (Element item : directChildren(list, Set.of("li"))) {
-            P paragraph = paragraph(null, null, null);
-            paragraph.setPPr((org.docx4j.wml.PPr) XmlUtils.unmarshalString("<w:pPr xmlns:w=\"" + W_NS + "\"><w:spacing w:after=\"160\"/><w:numPr><w:ilvl w:val=\"" + Math.min(level, 8) + "\"/><w:numId w:val=\"" + numId + "\"/></w:numPr></w:pPr>"));
-            for (Node child : item.childNodes()) {
-                if (!(child instanceof Element nested) || !("ul".equals(nested.normalName()) || "ol".equals(nested.normalName()))) {
-                    appendInline(child, paragraph, InlineStyle.PLAIN, state);
-                }
+            if (item.hasAttr("value")) throw new AppException("DOCX_LIST_UNSUPPORTED", "列表条目自定义编号不受支持", HttpStatus.UNPROCESSABLE_ENTITY);
+            List<Object> contents = new ArrayList<>();
+            RenderState itemState = new RenderState(state.document, contents, state.availableWidth, state.style, level + 1);
+            appendFlow(item, itemState);
+            P first = contents.isEmpty() ? null : unwrap(contents.get(0), P.class);
+            if (first == null || (first.getPPr() != null && first.getPPr().getNumPr() != null)) {
+                first = paragraph(null, null, null);
+                contents.add(0, first);
             }
-            state.main.addObject(paragraph);
-            state.hasContent = true;
-            for (Element nested : directChildren(item, Set.of("ul", "ol"))) {
-                appendList(nested, state, "ol".equals(nested.normalName()) ? 2 : 1, level + 1);
+            if (first.getPPr() == null) first.setPPr(new org.docx4j.wml.PPr());
+            var numbered = (org.docx4j.wml.PPr) XmlUtils.unmarshalString("<w:pPr xmlns:w=\"" + W_NS + "\"><w:numPr><w:ilvl w:val=\"" + level + "\"/><w:numId w:val=\"" + numId + "\"/></w:numPr></w:pPr>");
+            first.getPPr().setNumPr(numbered.getNumPr());
+            for (Object content : contents) {
+                P continuation = unwrap(content, P.class);
+                if (continuation != null && continuation != first) {
+                    if (continuation.getPPr() == null) continuation.setPPr(new org.docx4j.wml.PPr());
+                    if (continuation.getPPr().getNumPr() == null && continuation.getPPr().getInd() == null) {
+                        var indent = new org.docx4j.wml.PPrBase.Ind();
+                        indent.setLeft(java.math.BigInteger.valueOf(720 + level * 360));
+                        continuation.getPPr().setInd(indent);
+                    }
+                }
+                state.add(content);
             }
         }
     }
 
-    private Object buildTable(Element source, WordprocessingMLPackage document) throws Exception {
-        List<Element> rows = source.select("tr");
+    private int newListNumbering(Element list, RenderState state, int level) throws Exception {
+        var numbering = state.document.getMainDocumentPart().getNumberingDefinitionsPart().getJaxbElement();
+        int numId = numbering.getNum().size() + 1;
+        int start = 1;
+        try {
+            if (list.hasAttr("start")) start = Integer.parseInt(list.attr("start"));
+        } catch (NumberFormatException exception) {
+            throw new AppException("DOCX_LIST_UNSUPPORTED", "列表起始编号无效", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        var num = (org.docx4j.wml.Numbering.Num) XmlUtils.unmarshalString("<w:num xmlns:w=\"" + W_NS + "\" w:numId=\"" + numId
+                + "\"><w:abstractNumId w:val=\"" + ("ol".equals(list.normalName()) ? 2 : 1)
+                + "\"/><w:lvlOverride w:ilvl=\"" + level + "\"><w:startOverride w:val=\"" + start + "\"/></w:lvlOverride></w:num>");
+        numbering.getNum().add(num);
+        return numId;
+    }
+
+    private Object buildTable(Element source, RenderState state) throws Exception {
+        List<Element> rows = source.select("tr").stream().filter(row -> row.closest("table") == source).toList();
         if (rows.isEmpty()) {
             return null;
         }
@@ -263,10 +309,11 @@ public class HtmlToDocxService {
             columns = Math.max(columns, column);
         }
         if (columns == 0) return null;
-        int[] widths = tableWidths(placements, columns);
+        int[] widths = tableWidths(placements, columns, state.availableWidth);
         List<TableCellContent> cellContents = new ArrayList<>();
         StringBuilder xml = new StringBuilder("<w:tbl xmlns:w=\"").append(W_NS).append("\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">");
-        xml.append("<w:tblPr><w:tblW w:w=\"9360\" w:type=\"dxa\"/><w:tblInd w:w=\"120\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\"/><w:left w:val=\"single\" w:sz=\"4\"/><w:bottom w:val=\"single\" w:sz=\"4\"/><w:right w:val=\"single\" w:sz=\"4\"/><w:insideH w:val=\"single\" w:sz=\"4\"/><w:insideV w:val=\"single\" w:sz=\"4\"/></w:tblBorders><w:tblCellMar><w:top w:w=\"120\" w:type=\"dxa\"/><w:start w:w=\"140\" w:type=\"dxa\"/><w:bottom w:w=\"120\" w:type=\"dxa\"/><w:end w:w=\"140\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
+        int indent = source.closest("td, th") == null ? CELL_MARGIN_DXA : 0;
+        xml.append("<w:tblPr><w:tblW w:w=\"").append(state.availableWidth).append("\" w:type=\"dxa\"/><w:tblInd w:w=\"").append(indent).append("\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\"/><w:left w:val=\"single\" w:sz=\"4\"/><w:bottom w:val=\"single\" w:sz=\"4\"/><w:right w:val=\"single\" w:sz=\"4\"/><w:insideH w:val=\"single\" w:sz=\"4\"/><w:insideV w:val=\"single\" w:sz=\"4\"/></w:tblBorders><w:tblCellMar><w:top w:w=\"120\" w:type=\"dxa\"/><w:start w:w=\"140\" w:type=\"dxa\"/><w:bottom w:w=\"120\" w:type=\"dxa\"/><w:end w:w=\"140\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         for (int width : widths) xml.append("<w:gridCol w:w=\"").append(width).append("\"/>");
         xml.append("</w:tblGrid>");
         for (int row = 0; row < rows.size(); row++) {
@@ -293,7 +340,7 @@ public class HtmlToDocxService {
                 xml.append("</w:pPr>");
                 if (start != null) {
                     boolean header = "th".equals(start.cell.normalName());
-                    cellContents.add(new TableCellContent(row, renderedCell, start.cell, header, Math.max(1, cellWidth - 280)));
+                    cellContents.add(new TableCellContent(row, renderedCell, start.cell, header, cellWidth - 2 * CELL_MARGIN_DXA));
                 }
                 xml.append("</w:p></w:tc>");
                 renderedCell++;
@@ -302,11 +349,11 @@ public class HtmlToDocxService {
         }
         xml.append("</w:tbl>");
         Tbl table = (Tbl) XmlUtils.unmarshalString(xml.toString());
-        populateTableCells(table, cellContents, document);
+        populateTableCells(table, cellContents, state);
         return table;
     }
 
-    private void populateTableCells(Tbl table, List<TableCellContent> cellContents, WordprocessingMLPackage document) throws Exception {
+    private void populateTableCells(Tbl table, List<TableCellContent> cellContents, RenderState state) throws Exception {
         List<Tr> rows = table.getContent().stream().map(value -> unwrap(value, Tr.class)).filter(java.util.Objects::nonNull).toList();
         for (TableCellContent entry : cellContents) {
             if (entry.row >= rows.size()) continue;
@@ -315,14 +362,21 @@ public class HtmlToDocxService {
                     .filter(java.util.Objects::nonNull)
                     .toList();
             if (entry.cell >= cells.size()) continue;
-            P paragraph = cells.get(entry.cell).getContent().stream()
-                    .map(value -> unwrap(value, P.class))
-                    .filter(java.util.Objects::nonNull)
-                    .findFirst()
-                    .orElse(null);
-            if (paragraph == null) continue;
-            InlineStyle style = entry.bold ? InlineStyle.PLAIN.merge("th") : InlineStyle.PLAIN;
-            appendInline(entry.content, paragraph, style, new RenderState(document), entry.availableWidthDxa);
+            Tc cell = cells.get(entry.cell);
+            cell.getContent().clear();
+            InlineStyle style = entry.bold ? state.style.merge("th") : state.style;
+            RenderState cellState = new RenderState(state.document, cell.getContent(), entry.availableWidthDxa, style, 0);
+            appendFlow(entry.content, cellState);
+            // Word requires a final paragraph, including after a nested table.
+            if (cell.getContent().isEmpty() || unwrap(cell.getContent().get(cell.getContent().size() - 1), P.class) == null) {
+                cellState.add(paragraph(null, null, null));
+            }
+            for (Object content : cell.getContent()) {
+                P paragraph = unwrap(content, P.class);
+                if (paragraph != null && paragraph.getPPr() == null) {
+                    paragraph.setPPr((org.docx4j.wml.PPr) XmlUtils.unmarshalString("<w:pPr xmlns:w=\"" + W_NS + "\"><w:spacing w:after=\"0\"/></w:pPr>"));
+                }
+            }
         }
     }
 
@@ -336,15 +390,8 @@ public class HtmlToDocxService {
 
     private void appendStandaloneImage(Element image, RenderState state) throws Exception {
         P paragraph = paragraph(null, "center", null);
-        boolean appended = images.append(state.document, paragraph, image);
-        if (!appended && !image.attr("alt").isBlank()) {
-            appendText(paragraph, "[图片：" + image.attr("alt").trim() + "]", InlineStyle.PLAIN.withItalic());
-            appended = true;
-        }
-        if (appended) {
-            state.main.addObject(paragraph);
-            state.hasContent = true;
-        }
+        images.append(state.document, paragraph, image, state.availableWidth);
+        state.add(paragraph);
     }
 
     private void appendFormula(P paragraph, String latex) {
@@ -371,10 +418,17 @@ public class HtmlToDocxService {
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
-        Text text = new Text();
-        text.setValue(value);
-        text.setSpace("preserve");
-        run.getContent().add(text);
+        String[] pieces = value.replace("\r\n", "\n").replace('\r', '\n').split("(?=[\\n\\t])|(?<=[\\n\\t])", -1);
+        for (String piece : pieces) {
+            if (piece.equals("\n")) run.getContent().add(new org.docx4j.wml.Br());
+            else if (piece.equals("\t")) run.getContent().add(new R.Tab());
+            else if (!piece.isEmpty()) {
+                Text text = new Text();
+                text.setValue(piece);
+                text.setSpace("preserve");
+                run.getContent().add(text);
+            }
+        }
         target.getContent().add(run);
     }
 
@@ -417,7 +471,7 @@ public class HtmlToDocxService {
                 HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
-    private int[] tableWidths(List<Placement> placements, int count) {
+    private int[] tableWidths(List<Placement> placements, int count, int availableWidth) {
         double[] loads = new double[count];
         for (Placement placement : placements) {
             // Full-width banners do not constrain relative column widths. Spread
@@ -433,15 +487,18 @@ public class HtmlToDocxService {
         // columns. Reserve a minimum before distributing the remaining width.
         double[] weights = java.util.Arrays.stream(loads).map(load -> Math.sqrt(Math.max(8, load))).toArray();
         double total = java.util.Arrays.stream(weights).sum();
-        int minimum = Math.min(720, CONTENT_WIDTH_DXA / count);
-        int remaining = CONTENT_WIDTH_DXA - minimum * count;
+        if (availableWidth < count * (2 * CELL_MARGIN_DXA + 1)) {
+            throw new AppException("DOCX_TABLE_TOO_NARROW", "表格列数或嵌套深度超出当前纸张可用宽度", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        int minimum = Math.min(720, availableWidth / count);
+        int remaining = availableWidth - minimum * count;
         int[] widths = new int[count];
         int used = 0;
         for (int index = 0; index < count; index++) {
             widths[index] = minimum + (int) Math.floor(remaining * weights[index] / total);
             used += widths[index];
         }
-        widths[count - 1] += CONTENT_WIDTH_DXA - used;
+        widths[count - 1] += availableWidth - used;
         return widths;
     }
 
@@ -475,7 +532,7 @@ public class HtmlToDocxService {
             for (int level = 0; level < 9; level++) {
                 xml.append("<w:lvl w:ilvl=\"").append(level).append("\"><w:start w:val=\"1\"/><w:numFmt w:val=\"").append(ordered == 1 ? "decimal" : "bullet").append("\"/><w:lvlText w:val=\"").append(ordered == 1 ? "%" + (level + 1) + "." : "•").append("\"/><w:suff w:val=\"tab\"/><w:pPr><w:tabs><w:tab w:val=\"num\" w:pos=\"").append(720 + level * 360).append("\"/></w:tabs><w:ind w:left=\"").append(720 + level * 360).append("\" w:hanging=\"360\"/></w:pPr></w:lvl>");
             }
-            xml.append("</w:abstractNum><w:num w:numId=\"").append(id).append("\"><w:abstractNumId w:val=\"").append(id).append("\"/></w:num>");
+            xml.append("</w:abstractNum>");
         }
         return xml.append("</w:numbering>").toString();
     }
@@ -485,13 +542,25 @@ public class HtmlToDocxService {
     private record TableCellContent(int row, int cell, Element content, boolean bold, int availableWidthDxa) {}
     private static final class RenderState {
         private final WordprocessingMLPackage document;
-        private final MainDocumentPart main;
+        private final List<Object> content;
+        private final int availableWidth;
+        private final InlineStyle style;
+        private final int listLevel;
         private boolean hasContent;
-        private RenderState(WordprocessingMLPackage document) { this.document = document; this.main = document.getMainDocumentPart(); }
+        private RenderState(WordprocessingMLPackage document) {
+            this(document, document.getMainDocumentPart().getContent(), CONTENT_WIDTH_DXA, InlineStyle.PLAIN, 0);
+        }
+        private RenderState(WordprocessingMLPackage document, List<Object> content, int availableWidth, InlineStyle style, int listLevel) {
+            this.document = document;
+            this.content = content;
+            this.availableWidth = availableWidth;
+            this.style = style;
+            this.listLevel = listLevel;
+        }
+        private void add(Object value) { content.add(value); hasContent = true; }
     }
     private record InlineStyle(boolean bold, boolean italic, boolean underline, boolean sup, boolean sub, String font, String color) {
         private static final InlineStyle PLAIN = new InlineStyle(false, false, false, false, false, null, null);
-        private InlineStyle withItalic() { return new InlineStyle(bold, true, underline, sup, sub, font, color); }
         private InlineStyle merge(String tag) {
             return new InlineStyle(bold || Set.of("b", "strong", "th").contains(tag), italic || Set.of("i", "em", "cite").contains(tag), underline || Set.of("u", "a").contains(tag), sup || "sup".equals(tag), sub || "sub".equals(tag), font, "a".equals(tag) ? "05665C" : color);
         }

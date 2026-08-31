@@ -9,6 +9,8 @@ import org.xml.sax.InputSource;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 @Component
@@ -38,7 +40,8 @@ public class MathmlToOmmlConverter {
         }
         String name = element.getLocalName();
         return switch (name) {
-            case "math", "mrow", "mstyle", "semantics", "annotation" -> children(element);
+            case "math", "mrow", "mstyle" -> children(element);
+            case "semantics" -> render(childAt(element, 0));
             case "mi" -> textRun(element.getTextContent(), identifierStyle(element));
             case "mn", "mo", "mtext" -> textRun(element.getTextContent(), "p");
             case "msup" -> binary(element, "sSup", "e", "sup");
@@ -48,8 +51,28 @@ public class MathmlToOmmlConverter {
             case "msqrt" -> radical(children(element), "", true);
             case "mroot" -> root(element);
             case "mfenced" -> fenced(element);
-            default -> children(element);
+            case "mover", "munder" -> accent(element);
+            default -> throw new IllegalArgumentException("Unsupported MathML element: " + name);
         };
+    }
+
+    private String accent(Element element) {
+        boolean over = "mover".equals(element.getLocalName());
+        Node mark = childAt(element, 1);
+        if (!(mark instanceof Element symbol) || !"mo".equals(symbol.getLocalName())) {
+            throw new IllegalArgumentException("Unsupported formula decoration");
+        }
+        String value = symbol.getTextContent();
+        String expression = render(childAt(element, 0));
+        if (Set.of("¯", "‾", "\u0305", "_", "\u0332").contains(value)) {
+            return "<m:bar><m:barPr><m:pos m:val=\"" + (over ? "top" : "bot")
+                    + "\"/></m:barPr><m:e>" + expression + "</m:e></m:bar>";
+        }
+        if (over && "true".equals(element.getAttribute("accent")) && value.codePointCount(0, value.length()) == 1) {
+            return "<m:acc><m:accPr><m:chr m:val=\"" + escapeAttribute(value)
+                    + "\"/></m:accPr><m:e>" + expression + "</m:e></m:acc>";
+        }
+        throw new IllegalArgumentException("Unsupported formula decoration");
     }
 
     private String binary(Element element, String container, String first, String second) {
@@ -86,12 +109,30 @@ public class MathmlToOmmlConverter {
     private String fenced(Element element) {
         String open = element.hasAttribute("open") ? element.getAttribute("open") : "(";
         String close = element.hasAttribute("close") ? element.getAttribute("close") : ")";
+        String separators = element.hasAttribute("separators") ? element.getAttribute("separators").replaceAll("\\s", "") : ",";
+        int[] marks = separators.codePoints().toArray();
+        StringBuilder body = new StringBuilder();
+        List<Element> children = elementChildren(element);
+        for (int index = 0; index < children.size(); index++) {
+            if (index > 0 && marks.length > 0) body.append(textRun(new String(Character.toChars(marks[Math.min(index - 1, marks.length - 1)])), "p"));
+            body.append(render(children.get(index)));
+        }
         return "<m:d><m:dPr><m:begChr m:val=\"" + escapeAttribute(open) + "\"/><m:endChr m:val=\""
-                + escapeAttribute(close) + "\"/></m:dPr><m:e>" + children(element) + "</m:e></m:d>";
+                + escapeAttribute(close) + "\"/></m:dPr><m:e>" + body + "</m:e></m:d>";
     }
 
     private Node childAt(Element element, int index) {
-        return index < element.getChildNodes().getLength() ? element.getChildNodes().item(index) : null;
+        List<Element> children = elementChildren(element);
+        if (index >= children.size()) throw new IllegalArgumentException("Missing formula operand");
+        return children.get(index);
+    }
+
+    private List<Element> elementChildren(Element element) {
+        List<Element> result = new ArrayList<>();
+        for (int index = 0; index < element.getChildNodes().getLength(); index++) {
+            if (element.getChildNodes().item(index) instanceof Element child) result.add(child);
+        }
+        return result;
     }
 
     private String identifierStyle(Element element) {
