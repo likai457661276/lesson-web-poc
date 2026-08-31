@@ -25,6 +25,17 @@ class LatexFormulaConversionTest {
     }
 
     @Test
+    void preservesChineseAtomsAndTextBoxesInEditableMath() {
+        for (String formula : new String[]{"A_{底}=2\\pi r", "V_{\\text{总体}}=a^3", "\\text{面积}+b_{甲}"}) {
+            String output = omml.convert(latex.convert(formula));
+            assertThat(output).contains("m:oMath", "m:sSub");
+            assertThat(output).doesNotContain("lessonhan", "mbox", "<m:t>text</m:t>");
+        }
+        assertThat(omml.convert(latex.convert("A_{底}=2\\pi r"))).contains("底", "π");
+        assertThat(omml.convert(latex.convert("V_{\\text{总体}}=a^3"))).contains("总", "体");
+    }
+
+    @Test
     void rejectsUnsupportedCommands() {
         assertThatThrownBy(() -> latex.convert("\\unknown{x}"))
                 .isInstanceOf(IllegalArgumentException.class);

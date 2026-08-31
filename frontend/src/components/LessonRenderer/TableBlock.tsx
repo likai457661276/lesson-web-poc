@@ -64,7 +64,7 @@ export function TableBlock({
           />
         )
       }
-      if (node instanceof Element && (node.name === 'td' || node.name === 'th')) {
+      if (node instanceof Element && (node.name === 'td' || node.name === 'th' || node.name === 'caption')) {
         const Tag = node.name
         return (
           <Tag

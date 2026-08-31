@@ -34,11 +34,13 @@ class MineruResultExtractorTest {
                   {"type":"ocr_text","bbox":[0.1,0.1,0.2,0.2],"text":"ignored"}]]
                 """.getBytes());
         entries.put("nested/images/a.png", new byte[]{1, 2, 3});
+        entries.put("nested/layout.json", "{\"pdf_info\":[{\"page_idx\":0,\"page_size\":[600,800]}]}".getBytes());
 
         MineruParseResult result = extractor.extract(zip(entries),
                 tempDir.resolve("result.zip"), tempDir.resolve("mineru"));
 
         assertThat(result.contentList()).hasSize(1);
+        assertThat(result.layout().path("pdf_info").get(0).path("page_size").get(0).asInt()).isEqualTo(600);
         assertThat(result.ocrLayout().toString()).isEqualTo("[[{\"bbox\":[0.1,0.1,0.2,0.2]}]]");
         assertThat(Files.readAllBytes(tempDir.resolve("mineru/nested/images/a.png")))
                 .containsExactly(1, 2, 3);

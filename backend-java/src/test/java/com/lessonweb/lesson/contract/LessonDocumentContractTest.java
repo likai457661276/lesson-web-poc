@@ -25,7 +25,7 @@ class LessonDocumentContractTest extends MySqlContractTest {
                   "metadata": {"sourceType": "pdf", "sourceFileName": "lesson.pdf"},
                   "blocks": [
                     {"id":"1","type":"heading","level":1,"text":"目标","alignment":"left"},
-                    {"id":"2","type":"paragraph","text":"正文"},
+                    {"id":"2","type":"paragraph","text":"正文","reviewNote":"第 2 页需复核"},
                     {"id":"3","type":"list","items":["A"],"ordered":false},
                     {"id":"4","type":"table","html":"<table></table>"},
                     {"id":"5","type":"image","src":"/api/assets/a/1.png","alt":null},
@@ -38,6 +38,8 @@ class LessonDocumentContractTest extends MySqlContractTest {
         assertThat(document.documentId()).isEqualTo("lesson-1");
         assertThat(document.metadata().sourceFileName()).isEqualTo("lesson.pdf");
         assertThat(document.blocks()).hasSize(6);
+        assertThat(objectMapper.readTree(objectMapper.writeValueAsString(document))
+                .get("blocks").get(1).get("reviewNote").asText()).isEqualTo("第 2 页需复核");
         assertThat(objectMapper.readTree(objectMapper.writeValueAsString(document))
                 .get("blocks").get(0).get("type").asText()).isEqualTo("heading");
     }

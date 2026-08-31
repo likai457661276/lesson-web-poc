@@ -18,7 +18,7 @@ const statusCopy = {
 }
 
 export function HomePage() {
-  const { documentId } = useParams()
+  const { documentId, jobId } = useParams()
   const editing = Boolean(useMatch('/documents/:documentId/edit'))
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
@@ -33,7 +33,6 @@ export function HomePage() {
   const [batchError, setBatchError] = useState('')
   const batchDownloadRef = useRef(false)
   const rendererRef = useRef<LessonRendererHandle>(null)
-  const completedJobIds = useRef(new Set<string>())
   const pendingDownloadIdRef = useRef<string | null>(null)
   const {
     items,
@@ -47,8 +46,10 @@ export function HomePage() {
     remove,
     saveState, saveError, retrySave, reloadDocument, loadVersion,
   } = useDocumentLibrary(documentId)
-  const polling = useParseJobPolling(job, setJob)
-  const busy = job?.status === 'pending' || job?.status === 'processing'
+  const activeJob = job?.jobId === jobId ? job : null
+  const polling = useParseJobPolling(activeJob, setJob, jobId)
+  const restoringJob = Boolean(jobId) && !activeJob
+  const busy = restoringJob || activeJob?.status === 'pending' || activeJob?.status === 'processing'
   const controlsDisabled = uploading || Boolean(busy) || batchDownloading
   const unsaved = editorPending || saveState !== 'saved'
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
@@ -82,12 +83,10 @@ export function HomePage() {
   }, [blocker, unsaved])
 
   useEffect(() => {
-    if (job?.status !== 'completed' || !job.document) return
-    if (completedJobIds.current.has(job.jobId)) return
-    completedJobIds.current.add(job.jobId)
+    if (job?.jobId !== jobId || job?.status !== 'completed' || !job.document) return
     void refreshList()
-    navigate(`/documents/${job.document.documentId}`)
-  }, [refreshList, job, navigate])
+    navigate(`/documents/${job.document.documentId}`, { replace: true })
+  }, [refreshList, job, jobId, navigate])
 
   useEffect(() => {
     if (pendingDownloadIdRef.current !== documentId || !previewDocument) return
@@ -103,7 +102,9 @@ export function HomePage() {
     setJob(null)
     try {
       navigate('/')
-      setJob(await parseDocument(file))
+      const submitted = await parseDocument(file)
+      setJob(submitted)
+      navigate(`/jobs/${submitted.jobId}`, { replace: true })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '上传失败')
     } finally {
@@ -214,15 +215,16 @@ export function HomePage() {
             onSubmit={() => void submit()}
           />
 
-          {(job || error || uploading) && (
-            <section className={`job-status ${job?.status ?? 'failed'}`} aria-live="polite">
+          {(activeJob || jobId || error || uploading) && (
+            <section className={`job-status ${activeJob?.status ?? 'processing'}`} aria-live="polite">
               <div className="status-icon">
-                {job?.status === 'completed' ? <Check size={18} /> : error || job?.status === 'failed' ? <AlertCircle size={18} /> : <FileSearch size={18} />}
+                {activeJob?.status === 'completed' ? <Check size={18} /> : error || activeJob?.status === 'failed' ? <AlertCircle size={18} /> : <FileSearch size={18} />}
               </div>
               <div>
-                <strong>{error || polling.error || (uploading ? '正在上传文件' : job && statusCopy[job.status])}</strong>
-                <span>{job?.error?.message ?? (busy ? '通常需要数十秒，请保持页面打开。' : job?.jobId)}</span>
+                <strong>{error || polling.error || (uploading ? '正在上传文件' : restoringJob ? '正在恢复解析任务' : activeJob && statusCopy[activeJob.status])}</strong>
+                <span>{activeJob?.error?.message ?? (busy ? '通常需要数十秒；刷新页面后会自动恢复查询。' : activeJob?.jobId)}</span>
                 {polling.paused && <button type="button" onClick={polling.resume}>恢复查询</button>}
+                {jobId && <Link to="/">返回上传页</Link>}
               </div>
             </section>
           )}

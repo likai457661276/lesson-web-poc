@@ -23,7 +23,7 @@ it('continues polling after one network failure and stops after completion', asy
     .mockResolvedValueOnce({ ...pending, status: 'processing' })
     .mockResolvedValueOnce({ ...pending, status: 'completed' })
   const { result, unmount } = pollingHook()
-  await act(async () => { await vi.advanceTimersByTimeAsync(1800) })
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
   expect(result.current.polling.error).toContain('重试')
   await act(async () => { await vi.advanceTimersByTimeAsync(3600) })
   expect(result.current.job.status).toBe('processing')

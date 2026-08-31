@@ -48,7 +48,7 @@ class DocumentParseServiceTest {
                         [{"type":"text","text_level":1,"text":"课程标题"},
                          {"type":"image","img_path":"images/a.png"}]
                         """),
-                objectMapper.createArrayNode(),
+                objectMapper.createArrayNode(), objectMapper.createObjectNode(),
                 resultDir);
         when(parser.parse(any(Path.class))).thenReturn(raw);
         DocumentParseService service = service(storage, jobs, parser);

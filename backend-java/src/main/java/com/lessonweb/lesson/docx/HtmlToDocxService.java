@@ -22,7 +22,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
-import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -138,6 +137,12 @@ public class HtmlToDocxService {
             return;
         }
         if ("table".equals(tag)) {
+            Element caption = element.selectFirst("caption");
+            if (caption != null && !caption.text().isBlank()) {
+                P paragraph = paragraph("Caption", null, null);
+                appendInline(caption, paragraph, InlineStyle.PLAIN, state);
+                state.main.addObject(paragraph);
+            }
             Object table = buildTable(element, state.document);
             if (table != null) {
                 state.main.addObject(table);
@@ -164,7 +169,7 @@ public class HtmlToDocxService {
         }
         if (element.hasAttr("data-latex")) {
             P paragraph = paragraph(null, "center", null);
-            appendFormulaOrFallback(paragraph, element.attr("data-latex"));
+            appendFormula(paragraph, element.attr("data-latex"));
             state.main.addObject(paragraph);
             state.hasContent = true;
             return;
@@ -175,6 +180,10 @@ public class HtmlToDocxService {
     }
 
     private void appendInline(Node node, P paragraph, InlineStyle style, RenderState state) throws Exception {
+        appendInline(node, paragraph, style, state, CONTENT_WIDTH_DXA);
+    }
+
+    private void appendInline(Node node, P paragraph, InlineStyle style, RenderState state, int availableWidth) throws Exception {
         if (node instanceof TextNode textNode) {
             String text = textNode.getWholeText().replaceAll("[\\t\\r\\n ]+", " ");
             if (!text.isEmpty()) {
@@ -186,7 +195,7 @@ public class HtmlToDocxService {
             return;
         }
         if (element.hasAttr("data-latex")) {
-            appendFormulaOrFallback(paragraph, element.attr("data-latex"));
+            appendFormula(paragraph, element.attr("data-latex"));
             return;
         }
         String tag = element.normalName();
@@ -195,7 +204,7 @@ public class HtmlToDocxService {
             return;
         }
         if ("img".equals(tag)) {
-            if (!images.append(state.document, paragraph, element) && !element.attr("alt").isBlank()) {
+            if (!images.append(state.document, paragraph, element, availableWidth) && !element.attr("alt").isBlank()) {
                 appendText(paragraph, "[图片：" + element.attr("alt").trim() + "]", style.withItalic());
             }
             return;
@@ -205,7 +214,7 @@ public class HtmlToDocxService {
         }
         InlineStyle next = style.merge(tag);
         for (Node child : element.childNodes()) {
-            appendInline(child, paragraph, next, state);
+            appendInline(child, paragraph, next, state, availableWidth);
         }
     }
 
@@ -255,7 +264,7 @@ public class HtmlToDocxService {
         }
         if (columns == 0) return null;
         int[] widths = tableWidths(placements, columns);
-        List<TableCellImage> cellImages = new ArrayList<>();
+        List<TableCellContent> cellContents = new ArrayList<>();
         StringBuilder xml = new StringBuilder("<w:tbl xmlns:w=\"").append(W_NS).append("\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">");
         xml.append("<w:tblPr><w:tblW w:w=\"9360\" w:type=\"dxa\"/><w:tblInd w:w=\"120\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\"/><w:left w:val=\"single\" w:sz=\"4\"/><w:bottom w:val=\"single\" w:sz=\"4\"/><w:right w:val=\"single\" w:sz=\"4\"/><w:insideH w:val=\"single\" w:sz=\"4\"/><w:insideV w:val=\"single\" w:sz=\"4\"/></w:tblBorders><w:tblCellMar><w:top w:w=\"120\" w:type=\"dxa\"/><w:start w:w=\"140\" w:type=\"dxa\"/><w:bottom w:w=\"120\" w:type=\"dxa\"/><w:end w:w=\"140\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         for (int width : widths) xml.append("<w:gridCol w:w=\"").append(width).append("\"/>");
@@ -285,10 +294,7 @@ public class HtmlToDocxService {
                 xml.append("</w:pPr>");
                 if (start != null) {
                     boolean header = "th".equals(start.cell.normalName());
-                    xml.append(inlineXml(start.cell, header));
-                    for (Element image : start.cell.select("img")) {
-                        cellImages.add(new TableCellImage(row, renderedCell, image, header, Math.max(1, cellWidth - 280)));
-                    }
+                    cellContents.add(new TableCellContent(row, renderedCell, start.cell, header, Math.max(1, cellWidth - 280)));
                 }
                 xml.append("</w:p></w:tc>");
                 renderedCell++;
@@ -297,13 +303,13 @@ public class HtmlToDocxService {
         }
         xml.append("</w:tbl>");
         Tbl table = (Tbl) XmlUtils.unmarshalString(xml.toString());
-        appendTableImages(table, cellImages, document);
+        populateTableCells(table, cellContents, document);
         return table;
     }
 
-    private void appendTableImages(Tbl table, List<TableCellImage> cellImages, WordprocessingMLPackage document) {
+    private void populateTableCells(Tbl table, List<TableCellContent> cellContents, WordprocessingMLPackage document) throws Exception {
         List<Tr> rows = table.getContent().stream().map(value -> unwrap(value, Tr.class)).filter(java.util.Objects::nonNull).toList();
-        for (TableCellImage entry : cellImages) {
+        for (TableCellContent entry : cellContents) {
             if (entry.row >= rows.size()) continue;
             List<Tc> cells = rows.get(entry.row).getContent().stream()
                     .map(value -> unwrap(value, Tc.class))
@@ -316,10 +322,8 @@ public class HtmlToDocxService {
                     .findFirst()
                     .orElse(null);
             if (paragraph == null) continue;
-            if (!images.append(document, paragraph, entry.image, entry.availableWidthDxa) && !entry.image.attr("alt").isBlank()) {
-                InlineStyle style = entry.bold ? InlineStyle.PLAIN.merge("th") : InlineStyle.PLAIN;
-                appendText(paragraph, "[图片：" + entry.image.attr("alt").trim() + "]", style.withItalic());
-            }
+            InlineStyle style = entry.bold ? InlineStyle.PLAIN.merge("th") : InlineStyle.PLAIN;
+            appendInline(entry.content, paragraph, style, new RenderState(document), entry.availableWidthDxa);
         }
     }
 
@@ -329,35 +333,6 @@ public class HtmlToDocxService {
             return type.cast(element.getValue());
         }
         return null;
-    }
-
-    private String inlineXml(Node node, boolean bold) {
-        if (node instanceof TextNode text) {
-            String value = text.getWholeText().replaceAll("[\\t\\r\\n ]+", " ");
-            return value.isEmpty() ? "" : runXml(value, bold, false, false, false, false, null);
-        }
-        if (!(node instanceof Element element)) return "";
-        if (element.hasAttr("data-latex")) {
-            try { return formulas.toOmml(element.attr("data-latex")); }
-            catch (Exception ignored) { return runXml(element.attr("data-latex"), bold, false, false, false, false, "Cambria Math"); }
-        }
-        String tag = element.normalName();
-        if ("br".equals(tag)) return "<w:r><w:br/></w:r>";
-        boolean nextBold = bold || Set.of("b", "strong", "th").contains(tag);
-        boolean italic = Set.of("i", "em", "cite").contains(tag);
-        boolean underline = Set.of("u", "a").contains(tag);
-        boolean sup = "sup".equals(tag);
-        boolean sub = "sub".equals(tag);
-        StringBuilder result = new StringBuilder();
-        for (Node child : element.childNodes()) {
-            if (child instanceof TextNode text) {
-                String value = text.getWholeText().replaceAll("[\\t\\r\\n ]+", " ");
-                if (!value.isEmpty()) result.append(runXml(value, nextBold, italic, underline, sup, sub, null));
-            } else {
-                result.append(inlineXml(child, nextBold));
-            }
-        }
-        return result.toString();
     }
 
     private void appendStandaloneImage(Element image, RenderState state) throws Exception {
@@ -373,10 +348,8 @@ public class HtmlToDocxService {
         }
     }
 
-    private void appendFormulaOrFallback(P paragraph, String latex) {
-        if (!formulas.append(paragraph, latex)) {
-            appendText(paragraph, latex, new InlineStyle(false, false, false, false, false, "Cambria Math", null));
-        }
+    private void appendFormula(P paragraph, String latex) {
+        formulas.append(paragraph, latex);
     }
 
     private P paragraph(String style, String alignment, String text) throws Exception {
@@ -416,13 +389,6 @@ public class HtmlToDocxService {
         if (style.sub) xml.append("<w:vertAlign w:val=\"subscript\"/>");
         if (style.color != null) xml.append("<w:color w:val=\"").append(style.color).append("\"/>");
         return xml.append("</w:rPr>").toString();
-    }
-
-    private String runXml(String value, boolean bold, boolean italic, boolean underline, boolean sup, boolean sub, String font) {
-        InlineStyle style = new InlineStyle(bold, italic, underline, sup, sub, font, null);
-        return runProperties(style).replace("<w:rPr xmlns:w=\"" + W_NS + "\">", "<w:rPr>")
-                .replace("</w:rPr>", "</w:rPr><w:t xml:space=\"preserve\">" + escape(value) + "</w:t>")
-                .replaceFirst("^", "<w:r>") + "</w:r>";
     }
 
     private boolean hasMeaningfulContent(P paragraph) {
@@ -515,13 +481,9 @@ public class HtmlToDocxService {
         return xml.append("</w:numbering>").toString();
     }
 
-    private String escape(String value) {
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
-    }
-
     public record ExportResult(byte[] content, String filename) {}
     private record Placement(int row, int column, int rowspan, int colspan, Element cell) {}
-    private record TableCellImage(int row, int cell, Element image, boolean bold, int availableWidthDxa) {}
+    private record TableCellContent(int row, int cell, Element content, boolean bold, int availableWidthDxa) {}
     private static final class RenderState {
         private final WordprocessingMLPackage document;
         private final MainDocumentPart main;

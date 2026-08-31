@@ -33,7 +33,7 @@ public class MineruResultExtractor {
             extractArchive(archive, resultDir);
             JsonNode contentList = loadRequiredContentList(resultDir);
             JsonNode ocrLayout = loadOcrLayout(resultDir);
-            return new MineruParseResult(contentList, ocrLayout, resultDir);
+            return new MineruParseResult(contentList, ocrLayout, loadLayout(resultDir), resultDir);
         } catch (MineruException exception) {
             throw exception;
         } catch (ZipException exception) {
@@ -101,6 +101,15 @@ public class MineruResultExtractor {
                     .orElse(null);
         } catch (IOException exception) {
             throw new MineruException("MinerU content_list.json 读取失败", exception);
+        }
+    }
+
+    private JsonNode loadLayout(Path resultDir) throws IOException {
+        try (Stream<Path> paths = Files.walk(resultDir)) {
+            Path file = paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().equals("layout.json"))
+                    .sorted().findFirst().orElse(null);
+            return file == null ? objectMapper.createObjectNode() : objectMapper.readTree(file.toFile());
         }
     }
 

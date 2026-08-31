@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { ApiError, getParseJob } from '../api/documents'
 import type { ParseJob } from '../types/lesson-document'
 
-export function useParseJobPolling(job: ParseJob | null, onJob: (job: ParseJob) => void) {
+export function useParseJobPolling(job: ParseJob | null, onJob: (job: ParseJob) => void, routeJobId?: string) {
   const [error, setError] = useState('')
   const [paused, setPaused] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const jobId = job?.jobId
-  const busy = job?.status === 'pending' || job?.status === 'processing'
+  const jobId = routeJobId ?? job?.jobId
+  const busy = Boolean(jobId) && (!job || job.status === 'pending' || job.status === 'processing')
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Reset network retry state when the task or manual polling attempt changes.
@@ -32,14 +32,14 @@ export function useParseJobPolling(job: ParseJob | null, onJob: (job: ParseJob) 
           && reason.status !== 408 && reason.status !== 429
         if (terminal || failures >= 3) {
           setPaused(true)
-          setError('状态查询已暂停；后台任务可能仍在处理，可点击恢复查询。')
+          setError(terminal ? (reason as ApiError).message : '状态查询已暂停；后台任务可能仍在处理，可点击恢复查询。')
         } else {
           setError(`状态查询失败，正在重试（${failures}/3）…`)
           timer = window.setTimeout(poll, 1800 * 2 ** failures)
         }
       }
     }
-    timer = window.setTimeout(poll, 1800)
+    void poll()
     return () => { controller.abort(); window.clearTimeout(timer) }
   }, [jobId, busy, onJob, attempt])
 

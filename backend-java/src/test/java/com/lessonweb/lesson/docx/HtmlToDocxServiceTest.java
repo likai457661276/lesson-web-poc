@@ -134,7 +134,6 @@ class HtmlToDocxServiceTest {
                 <ol><li>步骤一</li></ol>
                 <p><span data-latex="x^2+\\frac{1}{2}\\leq\\sqrt{y}"></span></p>
                 <p><span data-latex="\\sin x+\\cos x+90^\\circ"></span></p>
-                <p><span data-latex="\\unknown{x}"></span></p>
                 <table><tr><th colspan="2">表头</th></tr><tr><td rowspan="2">甲</td><td>乙</td></tr><tr><td>丙</td></tr></table>
                 <figure><img alt="示意图" src="data:image/png;base64,%s"><figcaption>图 1</figcaption></figure>
                 """.formatted(image);
@@ -144,7 +143,7 @@ class HtmlToDocxServiceTest {
         String document = text(parts, "word/document.xml");
 
         assertThat(result.filename()).isEqualTo("课程：第一讲.docx");
-        assertThat(document).contains("二次函数课程", "学习目标", "粗体", "换行", "\\unknown{x}");
+        assertThat(document).contains("二次函数课程", "学习目标", "粗体", "换行");
         assertThat(document).doesNotContain("网页预览标题");
         assertThat(document).contains("w:pStyle w:val=\"HTMLTitle\"", "w:jc w:val=\"center\"");
         assertThat(document).contains("w:b", "w:i", "w:u", "superscript", "subscript");
@@ -163,6 +162,29 @@ class HtmlToDocxServiceTest {
 
         WordprocessingMLPackage loaded = WordprocessingMLPackage.load(new ByteArrayInputStream(result.content()));
         assertThat(loaded.getMainDocumentPart().getContent()).isNotEmpty();
+    }
+
+    @Test
+    void preservesCaptionAndMixedImageFormulaTextOrderInsideCells() throws Exception {
+        String image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        String html = "<table><caption>实验记录标题</caption><tr><td>观察前<img src='data:image/png;base64,"
+                + image + "'>观察后<span data-latex='A_{底}=2'></span>结束</td></tr></table>";
+        String xml = text(unzip(service.export(html, "ordered").content()), "word/document.xml");
+        assertThat(xml.indexOf("实验记录标题")).isLessThan(xml.indexOf("<w:tbl>"));
+        assertThat(xml.indexOf("观察前")).isLessThan(xml.indexOf("<w:drawing>"));
+        assertThat(xml.indexOf("<w:drawing>")).isLessThan(xml.indexOf("观察后"));
+        assertThat(xml.indexOf("观察后")).isLessThan(xml.indexOf("<m:oMath"));
+        assertThat(xml.indexOf("<m:oMath")).isLessThan(xml.indexOf("结束"));
+    }
+
+    @Test
+    void rejectsUnsupportedFormulasInsteadOfExportingRawLatex() {
+        for (String html : new String[]{"<p><span data-latex='\\unknown{x}'></span></p>",
+                "<table><tr><td><span data-latex='\\unknown{x}'></span></td></tr></table>"}) {
+            assertThatThrownBy(() -> service.export(html, "bad-formula"))
+                    .isInstanceOf(AppException.class)
+                    .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCX_FORMULA_UNSUPPORTED"));
+        }
     }
 
     @Test

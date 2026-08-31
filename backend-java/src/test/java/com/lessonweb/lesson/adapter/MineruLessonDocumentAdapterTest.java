@@ -48,6 +48,19 @@ class MineruLessonDocumentAdapterTest {
     }
 
     @Test
+    void retainsTableCaptionsBeforeTheTableBody() throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"table","table_caption":["实验 A & B","结果汇总"],
+                  "table_body":"<table><tr><td>测量值</td></tr></table>"}]
+                """);
+        LessonDocument document = adapter.convert(result(content, objectMapper.createArrayNode()),
+                "caption", "arbitrary.pdf", Map.of());
+        String html = ((TableBlock) document.blocks().get(0)).html();
+        assertThat(html).contains("<caption>实验 A &amp; B\n结果汇总</caption>");
+        assertThat(html.indexOf("<caption>")).isLessThan(html.indexOf("<tr>"));
+    }
+
+    @Test
     void stripsHeadingMarkupNormalizesDegreesAndInfersAlignment() throws Exception {
         JsonNode content = objectMapper.readTree("""
                 [
@@ -119,6 +132,6 @@ class MineruLessonDocumentAdapterTest {
     }
 
     private MineruParseResult result(JsonNode content, JsonNode ocr) {
-        return new MineruParseResult(content, ocr, Path.of("mineru"));
+        return new MineruParseResult(content, ocr, objectMapper.createObjectNode(), Path.of("mineru"));
     }
 }

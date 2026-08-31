@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import App from '../App'
-import { getLessonDocument, listLessonDocuments, parseDocument, updateLessonDocument, exportHtmlToDocx, type DocumentSnapshot } from '../api/documents'
+import { ApiError, getParseJob, getLessonDocument, listLessonDocuments, parseDocument, updateLessonDocument, exportHtmlToDocx, type DocumentSnapshot } from '../api/documents'
 import { deferred, document } from '../test/fixtures'
 import type { ParseJob } from '../types/lesson-document'
 
@@ -10,6 +10,7 @@ vi.mock('../api/documents', async (original) => ({
   ...await original<typeof import('../api/documents')>(),
   getLessonDocument: vi.fn(), listLessonDocuments: vi.fn(), parseDocument: vi.fn(),
   updateLessonDocument: vi.fn(), exportHtmlToDocx: vi.fn(),
+  getParseJob: vi.fn(),
 }))
 vi.mock('../components/LessonRenderer/documentExport', async (original) => ({
   ...await original<typeof import('../components/LessonRenderer/documentExport')>(), downloadBlob: vi.fn(),
@@ -19,6 +20,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(listLessonDocuments).mockResolvedValue([])
   vi.mocked(getLessonDocument).mockResolvedValue({ document, etag: 'v1' })
+  vi.mocked(getParseJob).mockResolvedValue({ jobId: 'job-1', status: 'processing', sourceFileName: 'a.pdf', createdAt: '' })
 })
 
 function page(path = '/') {
@@ -91,4 +93,33 @@ it('warns before unloading an active uncommitted edit', async () => {
   window.dispatchEvent(event)
   expect(event.defaultPrevented).toBe(true)
   expect(updateLessonDocument).not.toHaveBeenCalled()
+})
+
+it('keeps the job URL after upload and restores completion after a full remount', async () => {
+  vi.mocked(parseDocument).mockResolvedValue({ jobId: 'job-1', status: 'pending', sourceFileName: 'a.pdf', createdAt: '' })
+  const first = page()
+  fireEvent.change(first.container.querySelector('input[type=file]')!, {
+    target: { files: [new File(['%PDF-1.7'], 'a.pdf', { type: 'application/pdf' })] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '开始解析' }))
+  await waitFor(() => expect(first.router.state.location.pathname).toBe('/jobs/job-1'))
+  first.unmount()
+  vi.mocked(getParseJob).mockResolvedValue({ jobId: 'job-1', status: 'completed', sourceFileName: 'a.pdf', createdAt: '', document })
+  const restored = page('/jobs/job-1')
+  await waitFor(() => expect(restored.router.state.location.pathname).toBe('/documents/doc-1'))
+  expect(await screen.findByRole('heading', { name: 'Draft' })).toBeTruthy()
+  expect(getParseJob).toHaveBeenCalledWith('job-1', expect.any(AbortSignal))
+  await act(async () => { await restored.router.navigate('/jobs/job-1') })
+  await waitFor(() => expect(restored.router.state.location.pathname).toBe('/documents/doc-1'))
+})
+
+it('shows failed or missing jobs with a route back to uploading', async () => {
+  vi.mocked(getParseJob).mockResolvedValue({ jobId: 'failed', status: 'failed', sourceFileName: 'a.pdf', createdAt: '', error: { code: 'MINERU_PARSE_FAILED', message: '解析超时' } })
+  const failed = page('/jobs/failed')
+  expect(await screen.findByText('解析超时')).toBeTruthy()
+  failed.unmount()
+  vi.mocked(getParseJob).mockRejectedValue(new ApiError('任务不存在', 404))
+  page('/jobs/missing')
+  expect(await screen.findByRole('button', { name: '恢复查询' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '返回上传页' }).getAttribute('href')).toBe('/')
 })

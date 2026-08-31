@@ -4,5 +4,5 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.nio.file.Path;
 
-public record MineruParseResult(JsonNode contentList, JsonNode ocrLayout, Path resultDir) {
+public record MineruParseResult(JsonNode contentList, JsonNode ocrLayout, JsonNode layout, Path resultDir) {
 }

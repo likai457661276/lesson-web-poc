@@ -82,7 +82,24 @@ class DocumentContractTest extends MySqlContractTest {
     }
 
     @Test
-    void invalidExportBodyUsesFastApiCompatibleStatus() throws Exception {
+    void unsupportedFormulaReturnsAnActionableExportError() throws Exception {
+        mockMvc.perform(post("/api/documents/export-docx")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"html\":\"<p><span data-latex='\\\\unknown{x}'></span></p>\",\"filename\":\"a.docx\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("DOCX_FORMULA_UNSUPPORTED"));
+
+        mockMvc.perform(post("/api/documents/export-docx-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documents\":[{\"html\":\"<p>正常文档</p>\",\"filename\":\"valid.docx\"},"
+                                + "{\"html\":\"<p><span data-latex='\\\\unknown{x}'></span></p>\",\"filename\":\"invalid.docx\"}]}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.error.code").value("DOCX_FORMULA_UNSUPPORTED"));
+    }
+
+    @Test
+    void invalidExportBodyReturnsUnprocessableEntity() throws Exception {
         mockMvc.perform(post("/api/documents/export-docx")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"html\":\"\",\"filename\":\"lesson.docx\"}"))

@@ -80,6 +80,7 @@ public class LocalStorage {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.set("content_list", result.contentList());
         payload.set("ocr_layout", result.ocrLayout());
+        payload.set("layout", result.layout());
         writeJson(jobDir(jobId).resolve("mineru-result.json"), payload);
     }
 

@@ -9,7 +9,7 @@ backend-java/ Java 17 + Spring Boot 2.6.4，实现解析与 MySQL 文档库
 frontend/     Vite + React + Router 上传与 LessonDocument Renderer
 data/         本地解析任务和提取资源（不提交任务数据）
 example/      已提交的手工验收样本
-docs/         协议、验收清单与历史方案
+docs/         当前协议与验收记录
 ```
 
 ## 环境要求
@@ -60,6 +60,8 @@ pnpm dev
 - `DELETE /api/lesson-documents/{documentId}`：软删除文档
 
 任务文件写入 `data/jobs/{jobId}/`。后端将任务、完整文档和资源元数据写入 MySQL，前端以服务端文档库为唯一真源。软删除仅设置数据库聚合根的删除标志，数据库明细和 `DATA_DIR/{jobId}` 文件不会物理删除。
+
+上传后进入 `/jobs/{jobId}`，刷新该页面会从服务端恢复查询；完成后自动打开文档。表格标题、可可靠恢复的多栏阅读顺序和表格内图文顺序在 Web/DOCX 中保留；无法可靠恢复的多栏文字带人工复核提示。DOCX 不支持的公式会明确报错，不会以原始 LaTeX 冒充成功导出。
 
 文档列表支持勾选、全选后批量下载 DOCX（ZIP）。下载前等待已有编辑保存完成，再读取服务端最新文档，沿用单篇下载的 HTML 与图片内嵌流程，无需切换当前预览。每批支持 1–20 篇，HTML 合计最多 2500 万字符，生成的 DOCX 合计最多 100 MB；重名文件自动追加编号，任一文档失败则整批报错，可保留选择重试。批量接口不修改 LessonDocument v1 协议。
 

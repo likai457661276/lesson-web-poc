@@ -69,7 +69,7 @@ class LessonDocumentLibraryContractTest extends MySqlContractTest {
                 .andExpect(jsonPath("$.blocks[2].latex").value("x^2+y^2=z^2"));
 
         LessonDocument edited = new LessonDocument("1.0", document.documentId(), "编辑标题",
-                document.metadata(), List.of(new ParagraphBlock("block-1", "编辑正文")));
+                document.metadata(), List.of(new ParagraphBlock("block-1", "编辑正文", null)));
         mockMvc.perform(put("/api/lesson-documents/{id}", document.documentId())
                         .header("If-Match", library.snapshot(document.documentId()).etag())
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(edited)))
@@ -182,7 +182,7 @@ class LessonDocumentLibraryContractTest extends MySqlContractTest {
         String id = UUID.randomUUID().toString();
         LessonDocument document = new LessonDocument("1.0", id, title,
                 new LessonMetadata("pdf", "课程.pdf"), List.of(
-                        new ParagraphBlock("block-1", "中文正文"),
+                        new ParagraphBlock("block-1", "中文正文", null),
                         new TableBlock("block-2", "<table><tr><td>表格</td></tr></table>"),
                         new FormulaBlock("block-3", "x^2+y^2=z^2")));
         jobs.create(id, "课程.pdf");

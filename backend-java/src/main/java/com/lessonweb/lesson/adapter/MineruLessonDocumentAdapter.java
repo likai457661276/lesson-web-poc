@@ -52,7 +52,7 @@ public class MineruLessonDocumentAdapter {
         List<ObjectNode> content = mergeLayoutTablePrefixes(result.contentList());
         for (int index = 0; index < content.size(); index++) {
             DocumentBlock block = convertItem(
-                    content.get(index), index + 1, assetUrls, result.ocrLayout());
+                    content.get(index), index + 1, assetUrls, result.ocrLayout(), result.layout());
             if (block == null) {
                 continue;
             }
@@ -74,7 +74,8 @@ public class MineruLessonDocumentAdapter {
             ObjectNode item,
             int index,
             Map<String, String> assetUrls,
-            JsonNode ocrLayout
+            JsonNode ocrLayout,
+            JsonNode layout
     ) {
         String itemType = item.path("type").asText("").toLowerCase(Locale.ROOT);
         String blockId = String.format("block-%04d", index);
@@ -119,6 +120,21 @@ public class MineruLessonDocumentAdapter {
             String tableHtml = firstText(item, "table_body", "html").trim();
             tableHtml = rewriteTableAssets(tableHtml, assetUrls);
             tableHtml = rewriteTableFormulas(tableHtml);
+            if (!tableHtml.isEmpty()) {
+                Document html = Jsoup.parseBodyFragment(tableHtml);
+                html.outputSettings().prettyPrint(false);
+                Element table = html.selectFirst("table");
+                JsonNode captions = item.path("table_caption");
+                if (table != null && table.selectFirst("caption") == null && captions.isArray()) {
+                    List<String> lines = new ArrayList<>();
+                    captions.forEach(caption -> {
+                        String value = plainText(caption.asText(""));
+                        if (!value.isBlank()) lines.add(value);
+                    });
+                    if (!lines.isEmpty()) table.prependElement("caption").text(String.join("\n", lines));
+                }
+                tableHtml = html.body().html();
+            }
             return tableHtml.isEmpty() ? null : new TableBlock(blockId, tableHtml);
         }
 
@@ -147,13 +163,15 @@ public class MineruLessonDocumentAdapter {
         }
 
         if ((itemType.equals("text") || itemType.equals("paragraph") || itemType.isEmpty()) && !text.isEmpty()) {
+            DocumentBlock restored = new MineruReadingOrder().restore(item, layout, blockId);
+            if (restored != null) return restored;
             List<String> lines = text.lines().map(String::trim).filter(value -> !value.isEmpty()).toList();
             if (lines.size() > 1 && lines.stream().allMatch(line -> LIST_PREFIX.matcher(line).find())) {
                 boolean ordered = lines.stream().allMatch(line -> ORDERED_LIST_PREFIX.matcher(line).find());
                 List<String> items = lines.stream().map(line -> LIST_PREFIX.matcher(line).replaceFirst("")).toList();
                 return new ListBlock(blockId, items, ordered);
             }
-            return new ParagraphBlock(blockId, text);
+            return new ParagraphBlock(blockId, text, null);
         }
         return null;
     }

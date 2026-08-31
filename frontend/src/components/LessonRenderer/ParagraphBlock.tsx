@@ -12,18 +12,21 @@ export function ParagraphBlock({
 }) {
   const [text, setText] = useState(block.text)
   return (
-    <p
-      className="lesson-paragraph editable-copy"
-      contentEditable={editable}
-      suppressContentEditableWarning
-      onBlur={(event) => {
-        if (!editable) return
-        const next = event.currentTarget.textContent?.trim() ?? ''
-        setText(next)
-        onChange?.({ ...block, text: next })
-      }}
-    >
-      {text}
-    </p>
+    <div>
+      {block.reviewNote && <p className="document-review-note" role="note">需人工复核：{block.reviewNote}</p>}
+      <p
+        className="lesson-paragraph editable-copy"
+        contentEditable={editable}
+        suppressContentEditableWarning
+        onBlur={(event) => {
+          if (!editable) return
+          const next = event.currentTarget.textContent?.trim() ?? ''
+          setText(next)
+          onChange?.({ ...block, text: next })
+        }}
+      >
+        {text}
+      </p>
+    </div>
   )
 }
