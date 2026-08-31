@@ -1,5 +1,6 @@
 export type TextAlignment = 'left' | 'center' | 'right'
 export type HeadingBlock = { id: string; type: 'heading'; level: number; text: string; alignment: TextAlignment }
+/** reviewNote is a parsing warning about structure or order, separate from editable source text. */
 export type ParagraphBlock = { id: string; type: 'paragraph'; text: string; reviewNote?: string | null }
 export type ListBlock = { id: string; type: 'list'; items: string[]; ordered: boolean }
 export type TableBlock = { id: string; type: 'table'; html: string }

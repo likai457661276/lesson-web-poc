@@ -15,14 +15,17 @@ it('persists an edited caption without dropping table content', () => {
   expect(changed.mock.calls[0][0].html).toContain('观察内容')
 })
 
-it('displays review notes outside editable text and carries them into exports', () => {
-  const block = { id: 'paragraph', type: 'paragraph' as const, text: '原始正文', reviewNote: '第 2 页需核对阅读顺序' }
+it.each([
+  '第 2 页需核对阅读顺序',
+  '第 7 页，第 1 个内容块：未识别内容类型，已保留文字；请核对结构和内容完整性。',
+])('keeps review note %s outside editable text and carries it into exports', (reviewNote) => {
+  const block = { id: 'paragraph', type: 'paragraph' as const, text: '原始正文', reviewNote }
   const changed = vi.fn()
   render(<ParagraphBlock block={block} editable onChange={changed} />)
   expect(screen.getByRole('note').getAttribute('contenteditable')).toBeNull()
   fireEvent.blur(screen.getByText('原始正文'))
   expect(changed).toHaveBeenCalledWith(block)
   const html = renderDocumentForExport({ ...document, blocks: [block] }).outerHTML
-  expect(html).toContain('需人工复核：第 2 页需核对阅读顺序')
+  expect(html).toContain(`需人工复核：${reviewNote}`)
   expect(html).toContain('原始正文')
 })

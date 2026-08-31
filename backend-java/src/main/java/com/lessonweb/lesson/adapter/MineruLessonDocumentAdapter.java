@@ -3,6 +3,9 @@ package com.lessonweb.lesson.adapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lessonweb.lesson.model.lesson.DocumentBlock;
+import com.lessonweb.lesson.exception.AppException;
+import com.lessonweb.lesson.adapter.MineruGeometry.Box;
+import org.springframework.http.HttpStatus;
 import com.lessonweb.lesson.model.lesson.FormulaBlock;
 import com.lessonweb.lesson.model.lesson.HeadingBlock;
 import com.lessonweb.lesson.model.lesson.ImageBlock;
@@ -28,14 +31,14 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.lessonweb.lesson.adapter.MineruGeometry.normalizedBox;
+
 @Component
 public class MineruLessonDocumentAdapter {
 
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]+>");
     private static final Pattern LIST_PREFIX = Pattern.compile("^(?:[-*•]|\\d+[.)])\\s+");
     private static final Pattern ORDERED_LIST_PREFIX = Pattern.compile("^\\d+[.)]\\s+");
-    private static final Pattern TABLE_IMAGE = Pattern.compile(
-            "(<img\\b[^>]*?\\bsrc\\s*=\\s*[\"'])([^\"']+)([\"'])", Pattern.CASE_INSENSITIVE);
     private static final Pattern TABLE_FORMULA = Pattern.compile(
             "<eq>(.*?)</eq>|(?<!\\\\)\\$(.+?)(?<!\\\\)\\$",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
@@ -49,17 +52,24 @@ public class MineruLessonDocumentAdapter {
         List<DocumentBlock> blocks = new ArrayList<>();
         String defaultTitle = stem(sourceFilename);
         String title = defaultTitle;
-        List<ObjectNode> content = mergeLayoutTablePrefixes(result.contentList());
+        JsonNode content = result.contentList();
+        if (content == null || !content.isArray() || content.isEmpty()) {
+            throw new AppException("DOCUMENT_CONTENT_EMPTY", "解析结果没有可用内容，请检查源 PDF 或重新解析", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
         for (int index = 0; index < content.size(); index++) {
+            JsonNode item = content.get(index);
+            if (!item.isObject()) throw incomplete(item, index + 1, "内容块格式无效");
             DocumentBlock block = convertItem(
-                    content.get(index), index + 1, assetUrls, result.ocrLayout(), result.layout());
-            if (block == null) {
-                continue;
-            }
+                    (ObjectNode) item, index + 1, assetUrls, result.ocrLayout(), result.layout());
+            if (block == null) throw incomplete(item, index + 1, "内容块为空或无法转换");
             blocks.add(block);
             if (block instanceof HeadingBlock heading && heading.level() == 1 && title.equals(defaultTitle)) {
                 title = heading.text();
             }
+        }
+        if (blocks.stream().allMatch(block -> block instanceof ParagraphBlock paragraph && paragraph.text().isBlank())) {
+            throw new AppException("DOCUMENT_CONTENT_EMPTY", "解析结果只有复核提示，没有可用内容，请检查源 PDF 或重新解析",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
         }
         return new LessonDocument(
                 "1.0",
@@ -81,7 +91,9 @@ public class MineruLessonDocumentAdapter {
         String blockId = String.format("block-%04d", index);
         String text = text(item);
 
-        if (itemType.equals("title") || itemType.equals("heading") || truthy(item.get("text_level"))) {
+        if (itemType.equals("title") || itemType.equals("heading")
+                || ((itemType.equals("text") || itemType.equals("paragraph") || itemType.isEmpty())
+                    && truthy(item.get("text_level")))) {
             if (text.isEmpty()) {
                 return null;
             }
@@ -101,9 +113,11 @@ public class MineruLessonDocumentAdapter {
             if (rawItems != null && rawItems.isArray()) {
                 for (JsonNode rawItem : rawItems) {
                     String value = rawItem.isObject() ? text(rawItem) : rawItem.asText("").trim();
-                    if (!value.isEmpty()) {
-                        items.add(value);
+                    if (value.isEmpty()) throw incomplete(item, index, "列表包含无法转换的条目");
+                    if (rawItem.isObject() && hasStructuredContent(rawItem)) {
+                        throw incomplete(item, index, "列表包含尚不支持的嵌套或非文字内容，请对照原文处理");
                     }
+                    items.add(value);
                 }
             } else if (!text.isEmpty()) {
                 text.lines().map(String::trim).filter(value -> !value.isEmpty()).forEach(items::add);
@@ -118,14 +132,25 @@ public class MineruLessonDocumentAdapter {
 
         if (itemType.equals("table")) {
             String tableHtml = firstText(item, "table_body", "html").trim();
-            tableHtml = rewriteTableAssets(tableHtml, assetUrls);
+            if (tableHtml.isEmpty() && isDeletedTableFragment(item, layout)) {
+                return new ParagraphBlock(blockId, "", location(item, index)
+                        + "：上游已移除此页表格片段的独立内容，可能已合并到前面的表格；请对照原文核对跨页内容是否完整。");
+            }
             tableHtml = rewriteTableFormulas(tableHtml);
             if (!tableHtml.isEmpty()) {
                 Document html = Jsoup.parseBodyFragment(tableHtml);
                 html.outputSettings().prettyPrint(false);
                 Element table = html.selectFirst("table");
+                if (table == null || table.selectFirst("td, th") == null) {
+                    throw incomplete(item, index, "表格缺少有效单元格");
+                }
+                for (Element image : html.select("img")) {
+                    String src = assetUrl(image.attr("src"), assetUrls);
+                    if (src.isEmpty()) throw incomplete(item, index, "表格中的图片资源缺失");
+                    image.attr("src", src);
+                }
                 JsonNode captions = item.path("table_caption");
-                if (table != null && table.selectFirst("caption") == null && captions.isArray()) {
+                if (table.selectFirst("caption") == null && captions.isArray()) {
                     List<String> lines = new ArrayList<>();
                     captions.forEach(caption -> {
                         String value = plainText(caption.asText(""));
@@ -135,15 +160,14 @@ public class MineruLessonDocumentAdapter {
                 }
                 tableHtml = html.body().html();
             }
-            return tableHtml.isEmpty() ? null : new TableBlock(blockId, tableHtml);
+            if (tableHtml.isEmpty()) throw incomplete(item, index, "表格缺少结构化内容，无法完整转换");
+            return new TableBlock(blockId, tableHtml);
         }
 
         if (itemType.equals("image")) {
             String rawPath = firstText(item, "img_path", "image_path", "src");
             String src = assetUrl(rawPath, assetUrls);
-            if (src.isEmpty()) {
-                return null;
-            }
+            if (src.isEmpty()) throw incomplete(item, index, "图片资源缺失");
             JsonNode rawCaption = firstPresent(item, "image_caption", "caption");
             String alt = "";
             if (rawCaption != null && rawCaption.isArray()) {
@@ -173,120 +197,52 @@ public class MineruLessonDocumentAdapter {
             }
             return new ParagraphBlock(blockId, text, null);
         }
-        return null;
+        if (!text.isEmpty() && !hasStructuredContent(item)) {
+            return new ParagraphBlock(blockId, text, location(item, index) + "：未识别内容类型，已保留文字；请核对结构和内容完整性。");
+        }
+        throw incomplete(item, index, "内容类型或结构尚不支持，无法完整转换");
     }
 
-    private List<ObjectNode> mergeLayoutTablePrefixes(JsonNode rawItems) {
-        if (rawItems == null || !rawItems.isArray()) {
-            return new ArrayList<>();
-        }
-        List<ObjectNode> items = new ArrayList<>();
-        rawItems.forEach(item -> {
-            if (item.isObject()) {
-                items.add(((ObjectNode) item).deepCopy());
-            }
-        });
-
-        int tableIndex = 0;
-        while (tableIndex < items.size()) {
-            ObjectNode tableItem = items.get(tableIndex);
-            String tableHtml = firstText(tableItem, "table_body", "html").trim();
-            Box tableBox = bbox(tableItem);
-            if (!"table".equals(tableItem.path("type").asText()) || tableHtml.isEmpty() || tableBox == null) {
-                tableIndex++;
-                continue;
-            }
-
-            JsonNode pageIndex = tableItem.get("page_idx");
-            int prefixStart = tableIndex;
-            while (prefixStart > 0) {
-                ObjectNode candidate = items.get(prefixStart - 1);
-                Box candidateBox = bbox(candidate);
-                if (!"text".equals(candidate.path("type").asText("").toLowerCase(Locale.ROOT))
-                        || !sameJsonValue(candidate.get("page_idx"), pageIndex)
-                        || candidateBox == null
-                        || Math.abs(candidateBox.left() - tableBox.left()) > 40
-                        || candidateBox.right() > tableBox.right() + 20) {
-                    break;
-                }
-                prefixStart--;
-            }
-
-            List<ObjectNode> prefix = new ArrayList<>(items.subList(prefixStart, tableIndex));
-            Box lastBox = prefix.isEmpty() ? null : bbox(prefix.get(prefix.size() - 1));
-            boolean hasHeading = prefix.stream().anyMatch(item -> truthy(item.get("text_level")));
-            boolean wideTable = tableBox.left() <= 250 && tableBox.right() >= 700;
-            boolean continuous = lastBox != null
-                    && tableBox.top() - lastBox.bottom() >= -10
-                    && tableBox.top() - lastBox.bottom() <= 40;
-            if (prefix.size() < 3 || !hasHeading || !wideTable || !continuous) {
-                tableIndex++;
-                continue;
-            }
-
-            String merged = prependLayoutRows(tableHtml, prefix, tableBox);
-            if (merged.isEmpty()) {
-                tableIndex++;
-                continue;
-            }
-            tableItem.put("table_body", merged);
-            tableItem.remove("html");
-            items.subList(prefixStart, tableIndex).clear();
-            tableIndex = prefixStart + 1;
-        }
-        return items;
+    private AppException incomplete(JsonNode item, int index, String reason) {
+        return new AppException("DOCUMENT_CONTENT_INCOMPLETE", location(item, index) + "：" + reason,
+                HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
-    private String prependLayoutRows(String tableHtml, List<ObjectNode> prefix, Box tableBox) {
-        Document document = Jsoup.parseBodyFragment(tableHtml);
-        document.outputSettings().prettyPrint(false);
-        Element table = document.selectFirst("table");
-        Element firstRow = table == null ? null : table.selectFirst("tr");
-        if (table == null || firstRow == null) {
-            return "";
-        }
-        int columnCount = firstRow.children().stream()
-                .filter(cell -> cell.normalName().equals("th") || cell.normalName().equals("td"))
-                .mapToInt(cell -> positiveInt(cell.attr("colspan"), 1))
-                .sum();
-        if (columnCount < 1) {
-            return "";
-        }
-        table.addClass("lesson-layout-table");
-        table.attr("data-repeat-header", "false");
+    private boolean hasStructuredContent(JsonNode item) {
+        return List.of("img_path", "image_path", "src", "table_body", "html", "latex", "items", "list_items", "blocks", "children")
+                .stream().anyMatch(field -> truthy(item.get(field)));
+    }
 
-        for (ObjectNode item : prefix) {
-            String value = text(item);
-            if (value.isEmpty()) {
-                continue;
-            }
-            Element row = new Element(Tag.valueOf("tr"), "");
-            Element cell = new Element(Tag.valueOf("td"), "");
-            cell.attr("colspan", Integer.toString(columnCount));
-            cell.addClass("lesson-layout-cell");
-            Box itemBox = bbox(item);
-            if (truthy(item.get("text_level"))) {
-                cell.addClass("lesson-layout-heading-cell");
-                cell.appendElement("strong").text(plainText(value));
-            } else {
-                if (itemBox != null && itemBox.left() >= tableBox.left() + 20
-                        && itemBox.right() <= tableBox.right() - 20) {
-                    cell.addClass("lesson-layout-centered-cell");
-                }
-                cell.text(plainText(value));
-            }
-            row.appendChild(cell);
-            firstRow.before(row);
+    private boolean isDeletedTableFragment(ObjectNode item, JsonNode layout) {
+        // An explicit Provider deletion marker distinguishes merged-page placeholders
+        // from tables whose content is genuinely unavailable. Never infer this from page numbers.
+        if (!text(item).isEmpty() || !firstText(item, "img_path", "image_path", "src").isEmpty()
+                || truthy(item.get("table_caption")) || truthy(item.get("table_footnote"))) return false;
+        JsonNode table = MineruGeometry.matchingBlock(item, layout, "para_blocks", "table");
+        if (table == null) return false;
+        boolean foundBody = false;
+        for (JsonNode child : table.path("blocks")) {
+            if (!"table_body".equals(child.path("type").asText())) continue;
+            foundBody = true;
+            if (!child.path("lines_deleted").isBoolean() || !child.path("lines_deleted").asBoolean()
+                    || !child.path("lines").isArray() || !child.path("lines").isEmpty()) return false;
         }
-        return table.outerHtml();
+        return foundBody;
+    }
+
+    private String location(JsonNode item, int index) {
+        JsonNode page = item.path("page_idx");
+        String prefix = page.isIntegralNumber() && page.canConvertToInt() && page.asInt() >= 0
+                ? "第 " + (page.asLong() + 1) + " 页，" : "";
+        return prefix + "第 " + index + " 个内容块";
     }
 
     private TextAlignment headingAlignment(ObjectNode item) {
-        Box box = bbox(item);
+        Box box = normalizedBox(item);
         if (box == null) {
             return TextAlignment.LEFT;
         }
-        double pageWidth = Math.max(Math.abs(box.left()), Math.abs(box.right())) <= 1.5 ? 1.0 : 1000.0;
+        double pageWidth = 1.0;
         double blockCenter = (box.left() + box.right()) / 2;
         double blockWidth = box.right() - box.left();
         double tolerance = Math.max(pageWidth * 0.025, Math.min(pageWidth * 0.08, blockWidth * 0.2));
@@ -308,18 +264,18 @@ public class MineruLessonDocumentAdapter {
         if (tokens.length < 2 || ocrLayout == null || !ocrLayout.isArray()) {
             return text;
         }
-        int pageIndex = intValue(item.get("page_idx"), 0);
+        int pageIndex = intValue(item.get("page_idx"), -1);
         if (pageIndex < 0 || pageIndex >= ocrLayout.size() || !ocrLayout.get(pageIndex).isArray()) {
             return text;
         }
-        Box headingBox = normalizedBbox(item);
+        Box headingBox = normalizedBox(item);
         if (headingBox == null) {
             return text;
         }
         double lineHeight = headingBox.bottom() - headingBox.top();
         List<Box> matching = new ArrayList<>();
         for (JsonNode candidate : ocrLayout.get(pageIndex)) {
-            Box box = normalizedBbox(candidate);
+            Box box = normalizedBox(candidate);
             if (box == null) {
                 continue;
             }
@@ -347,18 +303,6 @@ public class MineruLessonDocumentAdapter {
             restored.append(tokens[index]);
         }
         return restored.toString();
-    }
-
-    private String rewriteTableAssets(String html, Map<String, String> assetUrls) {
-        Matcher matcher = TABLE_IMAGE.matcher(html);
-        StringBuffer output = new StringBuffer();
-        while (matcher.find()) {
-            String resolved = assetUrl(matcher.group(2), assetUrls);
-            String source = resolved.isEmpty() ? matcher.group(2) : resolved;
-            matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group(1) + source + matcher.group(3)));
-        }
-        matcher.appendTail(output);
-        return output.toString();
     }
 
     private String rewriteTableFormulas(String html) {
@@ -398,31 +342,6 @@ public class MineruLessonDocumentAdapter {
         String latex = value == null ? "" : value.trim();
         latex = latex.replaceAll("^\\$+|\\$+$", "").trim();
         return latex.replace("°", "^{\\circ}");
-    }
-
-    private Box bbox(JsonNode item) {
-        JsonNode values = item == null ? null : item.get("bbox");
-        if (values == null || !values.isArray() || values.size() != 4) {
-            return null;
-        }
-        for (JsonNode value : values) {
-            if (!value.isNumber()) {
-                return null;
-            }
-        }
-        Box box = new Box(values.get(0).asDouble(), values.get(1).asDouble(),
-                values.get(2).asDouble(), values.get(3).asDouble());
-        return box.right() > box.left() && box.bottom() > box.top() ? box : null;
-    }
-
-    private Box normalizedBbox(JsonNode item) {
-        Box box = bbox(item);
-        if (box == null) {
-            return null;
-        }
-        double scale = Math.max(Math.max(Math.abs(box.left()), Math.abs(box.top())),
-                Math.max(Math.abs(box.right()), Math.abs(box.bottom()))) <= 1.5 ? 1.0 : 1000.0;
-        return new Box(box.left() / scale, box.top() / scale, box.right() / scale, box.bottom() / scale);
     }
 
     private String text(JsonNode value) {
@@ -472,13 +391,6 @@ public class MineruLessonDocumentAdapter {
         return value.size() > 0;
     }
 
-    private boolean sameJsonValue(JsonNode left, JsonNode right) {
-        if (left == null || left.isNull()) {
-            return right == null || right.isNull();
-        }
-        return left.equals(right);
-    }
-
     private int positiveOrDefault(JsonNode value, int fallback) {
         int parsed = intValue(value, fallback);
         return parsed > 0 ? parsed : fallback;
@@ -498,15 +410,6 @@ public class MineruLessonDocumentAdapter {
         }
     }
 
-    private int positiveInt(String value, int fallback) {
-        try {
-            int parsed = Integer.parseInt(value);
-            return parsed > 0 ? parsed : fallback;
-        } catch (NumberFormatException exception) {
-            return fallback;
-        }
-    }
-
     private String plainText(String value) {
         return Parser.unescapeEntities(TAG_PATTERN.matcher(value).replaceAll(""), false).trim();
     }
@@ -521,6 +424,4 @@ public class MineruLessonDocumentAdapter {
         return dot < 0 ? "" : filename.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
-    private record Box(double left, double top, double right, double bottom) {
-    }
 }

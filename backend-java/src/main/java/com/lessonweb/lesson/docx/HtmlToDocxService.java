@@ -290,7 +290,6 @@ public class HtmlToDocxService {
                 if (start != null && "th".equals(start.cell.normalName())) xml.append("<w:shd w:fill=\"F2F4F7\"/>");
                 String verticalAlignment = effective != null && "th".equals(effective.cell.normalName()) ? "center" : "top";
                 xml.append("<w:vAlign w:val=\"").append(verticalAlignment).append("\"/></w:tcPr><w:p><w:pPr><w:spacing w:after=\"0\"/>");
-                if (start != null && start.cell.hasClass("lesson-layout-centered-cell")) xml.append("<w:jc w:val=\"center\"/>");
                 xml.append("</w:pPr>");
                 if (start != null) {
                     boolean header = "th".equals(start.cell.normalName());

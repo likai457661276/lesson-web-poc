@@ -2,6 +2,10 @@ package com.lessonweb.lesson.contract;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lessonweb.lesson.model.lesson.LessonDocument;
+import com.lessonweb.lesson.adapter.MineruLessonDocumentAdapter;
+import com.lessonweb.lesson.parser.MineruParseResult;
+import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -54,5 +58,20 @@ class LessonDocumentContractTest extends MySqlContractTest {
 
         assertThatThrownBy(() -> objectMapper.readValue(json, LessonDocument.class))
                 .hasMessageContaining("mineru_text");
+    }
+
+    @Test
+    void unknownSourceTextBecomesReviewedV1ParagraphWithoutProviderFields() throws Exception {
+        var raw = new MineruParseResult(objectMapper.readTree("""
+                [{"type":"unrecognized","text":"Independent text","page_idx":2,"bbox":[100,100,400,200]}]
+                """), objectMapper.createArrayNode(), objectMapper.createObjectNode(), Path.of("unused"));
+        var document = new MineruLessonDocumentAdapter().convert(raw, "review", "independent.pdf", Map.of());
+        String json = objectMapper.writeValueAsString(document);
+        assertThat(objectMapper.readValue(json, LessonDocument.class)).isEqualTo(document);
+        var block = objectMapper.readTree(json).path("blocks").get(0);
+        assertThat(block.path("type").asText()).isEqualTo("paragraph");
+        assertThat(block.path("text").asText()).isEqualTo("Independent text");
+        assertThat(block.path("reviewNote").asText()).contains("第 3 页", "未识别内容类型");
+        assertThat(json).doesNotContain("page_idx", "bbox", "unrecognized");
     }
 }

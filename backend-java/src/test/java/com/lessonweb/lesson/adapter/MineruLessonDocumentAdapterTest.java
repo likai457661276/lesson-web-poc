@@ -8,6 +8,13 @@ import com.lessonweb.lesson.model.lesson.ImageBlock;
 import com.lessonweb.lesson.model.lesson.LessonDocument;
 import com.lessonweb.lesson.model.lesson.TableBlock;
 import com.lessonweb.lesson.model.lesson.TextAlignment;
+import com.lessonweb.lesson.model.lesson.ParagraphBlock;
+import com.lessonweb.lesson.exception.AppException;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lessonweb.lesson.parser.MineruParseResult;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +22,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MineruLessonDocumentAdapterTest {
 
@@ -93,7 +101,7 @@ class MineruLessonDocumentAdapterTest {
     }
 
     @Test
-    void mergesGeometryMatchedPrefixRowsIntoLayoutTable() throws Exception {
+    void preservesProviderBlockBoundariesEvenWhenAlignedWithTable() throws Exception {
         JsonNode content = objectMapper.readTree("""
                 [
                   {"type":"text","text_level":1,"text":"第一课时","page_idx":0,"bbox":[430,80,570,115]},
@@ -107,12 +115,12 @@ class MineruLessonDocumentAdapterTest {
         LessonDocument document = adapter.convert(result(content, objectMapper.createArrayNode()),
                 "job-layout", "lesson.pdf", Map.of());
 
-        assertThat(document.blocks()).extracting(block -> block.type()).containsExactly("heading", "table");
-        String html = ((TableBlock) document.blocks().get(1)).html();
-        assertThat(html).contains("lesson-layout-table", "data-repeat-header=\"false\"",
-                "lesson-layout-heading-cell", "lesson-layout-centered-cell", "data-latex=\"b &lt; 720\"");
-        assertThat(html.indexOf("一、内容")).isLessThan(html.indexOf("任意角的概念"));
-        assertThat(html.indexOf("任意角的概念")).isLessThan(html.indexOf("核心问题"));
+        assertThat(document.blocks()).extracting(block -> block.type())
+                .containsExactly("heading", "heading", "paragraph", "heading", "paragraph", "table");
+        assertThat(document.title()).isEqualTo("第一课时");
+        String html = ((TableBlock) document.blocks().get(5)).html();
+        assertThat(html).contains("data-latex=\"b &lt; 720\"")
+                .doesNotContain("lesson-layout", "一、内容", "任意角的概念");
     }
 
     @Test
@@ -129,6 +137,166 @@ class MineruLessonDocumentAdapterTest {
 
         assertThat(document.blocks()).extracting(block -> block.type())
                 .containsExactly("heading", "paragraph", "table");
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {1, 0.001})
+    void preservesIndependentNarrativeAcrossCoordinateUnits(double scale) throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [
+                  {"type":"text","text_level":1,"text":"Observations","page_idx":4,"bbox":[100,20,400,45]},
+                  {"type":"text","text":"Independent introduction.","page_idx":4,"bbox":[100,400,800,420]},
+                  {"type":"text","text":"Measurements follow.","page_idx":4,"bbox":[100,440,800,460]},
+                  {"type":"table","page_idx":4,"bbox":[100,480,900,900],
+                   "table_body":"<table><tr><td>Sample</td><td>Value</td></tr></table>"}
+                ]
+                """);
+        scaleBoxes(content, scale);
+        var document = adapter.convert(result(content, objectMapper.createArrayNode()), "unseen", "report.pdf", Map.of());
+        assertThat(document.title()).isEqualTo("Observations");
+        assertThat(document.blocks()).extracting(block -> block.type())
+                .containsExactly("heading", "paragraph", "paragraph", "table");
+        assertThat(((HeadingBlock) document.blocks().get(0)).level()).isEqualTo(1);
+        assertThat(((ParagraphBlock) document.blocks().get(1)).text()).isEqualTo("Independent introduction.");
+        assertThat(((TableBlock) document.blocks().get(3)).html()).doesNotContain("Observations", "introduction");
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {1, 0.001})
+    void headingAlignmentIsIndependentOfCoordinateUnits(double scale) throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"heading","text":"Appendix","bbox":[420,80,580,110]},
+                 {"type":"heading","text":"Notes","bbox":[760,130,920,160]}]
+                """);
+        scaleBoxes(content, scale);
+        var document = adapter.convert(result(content, objectMapper.createArrayNode()), "geometry", "report.pdf", Map.of());
+        assertThat(((HeadingBlock) document.blocks().get(0)).alignment()).isEqualTo(TextAlignment.CENTER);
+        assertThat(((HeadingBlock) document.blocks().get(1)).alignment()).isEqualTo(TextAlignment.RIGHT);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"[]", "null", "{}"})
+    void rejectsEmptyOrInvalidContentList(String json) throws Exception {
+        JsonNode content = objectMapper.readTree(json);
+        assertThatThrownBy(() -> adapter.convert(result(content, objectMapper.createArrayNode()), "empty", "blank.pdf", Map.of()))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCUMENT_CONTENT_EMPTY"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "null",
+            "{\"type\":\"image\",\"img_path\":\"images/missing.png\"}",
+            "{\"type\":\"table\",\"img_path\":\"images/table.png\"}",
+            "{\"type\":\"table\",\"table_body\":\"<table></table>\"}",
+            "{\"type\":\"table\",\"table_body\":\"<table><tr><td><img src=missing.png></td></tr></table>\"}",
+            "{\"type\":\"list\",\"items\":[\"retained\",{}]}",
+            "{\"type\":\"list\",\"items\":[{\"text\":\"Parent\",\"list_items\":[\"Child\"]}]}",
+            "{\"type\":\"unrecognized\",\"text\":\"Parent\",\"children\":[{\"text\":\"Child\"}]}",
+            "{\"type\":\"formula\",\"latex\":\"\"}",
+            "{\"type\":\"heading\",\"text\":\"\"}",
+            "{\"type\":\"unrecognized\"}"
+    })
+    void rejectsUnrepresentableBlocksInsteadOfSilentlyDroppingThem(String item) throws Exception {
+        JsonNode content = objectMapper.readTree("[{\"type\":\"text\",\"text\":\"Useful content\"}," + item + "]");
+        assertThatThrownBy(() -> adapter.convert(result(content, objectMapper.createArrayNode()), "partial", "report.pdf", Map.of()))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("第 2 个内容块")
+                .satisfies(error -> {
+                    assertThat(((AppException) error).code()).isEqualTo("DOCUMENT_CONTENT_INCOMPLETE");
+                    assertThat(((AppException) error).status().value()).isEqualTo(422);
+                });
+    }
+
+    @Test
+    void retainsUnknownTextWithReviewNoteAndSourceLocation() throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"unrecognized","text":"Independent source text","page_idx":6}]
+                """);
+        var document = adapter.convert(result(content, objectMapper.createArrayNode()), "unknown", "report.pdf", Map.of());
+        ParagraphBlock block = (ParagraphBlock) document.blocks().get(0);
+        assertThat(block.text()).isEqualTo("Independent source text");
+        assertThat(block.reviewNote()).contains("第 7 页", "第 1 个内容块", "未识别内容类型");
+    }
+
+    @Test
+    void rewritesUnquotedTableImagesWithoutChangingFormulaMarkup() throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"table","table_body":"<table><tr><td><img src=images/plot.png><eq>x^2</eq></td></tr></table>"}]
+                """);
+        var document = adapter.convert(result(content, objectMapper.createArrayNode()), "assets", "report.pdf",
+                Map.of("images/plot.png", "/api/assets/assets/plot.png"));
+        assertThat(((TableBlock) document.blocks().get(0)).html())
+                .contains("src=\"/api/assets/assets/plot.png\"", "data-latex=\"x^2\"");
+    }
+
+    @ParameterizedTest
+    @ValueSource(doubles = {1, 0.001})
+    void representsExplicitlyDeletedCrossPageFragmentsAsReviewNotes(double scale) throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"table","table_body":"<table><tr><td>Combined observations</td></tr></table>"},
+                 {"type":"table","img_path":"","table_caption":[],"table_footnote":[],"page_idx":8,"bbox":[100,200,900,800]}]
+                """);
+        scaleBoxes(objectMapper.createArrayNode().add(content.get(1)), scale);
+        var document = adapter.convert(new MineruParseResult(content, objectMapper.createArrayNode(), deletedTableLayout(), Path.of("unused")),
+                "continuation", "independent.pdf", Map.of());
+        assertThat(document.blocks()).extracting(block -> block.type()).containsExactly("table", "paragraph");
+        assertThat(((TableBlock) document.blocks().get(0)).html()).contains("Combined observations");
+        ParagraphBlock review = (ParagraphBlock) document.blocks().get(1);
+        assertThat(review.text()).isEmpty();
+        assertThat(review.reviewNote()).contains("第 9 页", "跨页内容是否完整");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-marker", "different-page", "different-box", "ambiguous-box", "nonempty-lines"})
+    void doesNotGuessThatAnEmptyTableWasMergedElsewhere(String scenario) throws Exception {
+        ObjectNode layout = deletedTableLayout();
+        ObjectNode page = (ObjectNode) layout.path("pdf_info").get(0);
+        ArrayNode tables = (ArrayNode) page.path("para_blocks");
+        ObjectNode table = (ObjectNode) tables.get(0);
+        ObjectNode body = (ObjectNode) table.path("blocks").get(0);
+        switch (scenario) {
+            case "missing-marker" -> body.remove("lines_deleted");
+            case "different-page" -> page.put("page_idx", 7);
+            case "different-box" -> table.putArray("bbox").add(1).add(1).add(20).add(30);
+            case "ambiguous-box" -> tables.add(table.deepCopy());
+            default -> ((ArrayNode) body.path("lines")).addObject().put("text", "Source content");
+        }
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"table","page_idx":8,"bbox":[100,200,900,800]}]
+                """);
+        assertThatThrownBy(() -> adapter.convert(new MineruParseResult(content, objectMapper.createArrayNode(), layout, Path.of("unused")),
+                "not-merged", "independent.pdf", Map.of()))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCUMENT_CONTENT_INCOMPLETE"));
+    }
+
+    @Test
+    void reviewOnlyResultCannotBeReportedAsUsableDocument() throws Exception {
+        JsonNode content = objectMapper.readTree("""
+                [{"type":"table","page_idx":8,"bbox":[100,200,900,800]}]
+                """);
+        assertThatThrownBy(() -> adapter.convert(new MineruParseResult(content, objectMapper.createArrayNode(), deletedTableLayout(), Path.of("unused")),
+                "no-content", "independent.pdf", Map.of()))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).code()).isEqualTo("DOCUMENT_CONTENT_EMPTY"));
+    }
+
+    private ObjectNode deletedTableLayout() throws Exception {
+        return (ObjectNode) objectMapper.readTree("""
+                {"pdf_info":[{"page_idx":8,"page_size":[300,600],"para_blocks":[
+                  {"type":"table","bbox":[30,120,270,480],"blocks":[
+                    {"type":"table_body","lines_deleted":true,"lines":[]}
+                  ]}
+                ]}]}
+                """);
+    }
+
+    private void scaleBoxes(JsonNode content, double scale) {
+        content.forEach(item -> {
+            ArrayNode box = (ArrayNode) item.path("bbox");
+            for (int i = 0; i < box.size(); i++) box.set(i, DoubleNode.valueOf(box.get(i).asDouble() * scale));
+        });
     }
 
     private MineruParseResult result(JsonNode content, JsonNode ocr) {

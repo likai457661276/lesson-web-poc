@@ -12,6 +12,8 @@ import com.lessonweb.lesson.parser.MineruParseResult;
 import com.lessonweb.lesson.storage.AssetStorageService;
 import com.lessonweb.lesson.storage.LocalStorage;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.util.unit.DataSize;
@@ -85,6 +87,35 @@ class DocumentParseServiceTest {
         assertThat(failed.status()).isEqualTo(JobStatus.FAILED);
         assertThat(failed.error().code()).isEqualTo("MINERU_PARSE_FAILED");
         assertThat(failed.error().message()).isEqualTo("上游失败");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"empty,DOCUMENT_CONTENT_EMPTY", "missing-image,DOCUMENT_CONTENT_INCOMPLETE",
+            "unstructured-table,DOCUMENT_CONTENT_INCOMPLETE"})
+    void neverPersistsIncompleteParsingAsSuccess(String scenario, String errorCode) throws Exception {
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        LocalStorage storage = storage(mapper);
+        ParseJobService jobs = jobService();
+        MineruDocumentParser parser = mock(MineruDocumentParser.class);
+        Path resultDir = Files.createDirectories(tempDir.resolve("provider-result"));
+        String json = switch (scenario) {
+            case "empty" -> "[]";
+            case "missing-image" -> "[{\"type\":\"text\",\"text\":\"Visible paragraph\"},{\"type\":\"image\",\"img_path\":\"missing.png\"}]";
+            default -> "[{\"type\":\"table\",\"img_path\":\"table.png\"}]";
+        };
+        when(parser.parse(any(Path.class))).thenReturn(new MineruParseResult(mapper.readTree(json),
+                mapper.createArrayNode(), mapper.createObjectNode(), resultDir));
+        DocumentParseService service = service(storage, jobs, parser);
+        var submission = service.createJob(new MockMultipartFile("file", "independent.pdf", "application/pdf", "%PDF-1.7".getBytes()));
+
+        service.processJob(submission.job().jobId(), submission.sourcePath());
+
+        var failed = service.getJob(submission.job().jobId());
+        assertThat(failed.status()).isEqualTo(JobStatus.FAILED);
+        assertThat(failed.error().code()).isEqualTo(errorCode);
+        assertThat(failed.document()).isNull();
+        org.mockito.Mockito.verify(jobs, org.mockito.Mockito.never()).success(anyString(), any(), anyList());
+        assertThat(storage.jobDir(failed.jobId()).resolve("mineru-result.json")).isRegularFile();
     }
 
     @Test
