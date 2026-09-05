@@ -19,13 +19,6 @@ function renderBlock(block: LessonBlock): HTMLElement {
       const paragraph = window.document.createElement('p')
       setClassName(paragraph, 'lesson-paragraph')
       paragraph.textContent = block.text
-      if (block.reviewNote) {
-        const wrapper = window.document.createElement('div')
-        const note = window.document.createElement('p')
-        note.textContent = `需人工复核：${block.reviewNote}`
-        wrapper.append(note, paragraph)
-        return wrapper
-      }
       return paragraph
     }
     case 'list': {

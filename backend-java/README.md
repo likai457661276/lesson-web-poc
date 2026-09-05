@@ -58,7 +58,7 @@ MySQL 使用命名 volume 保存数据，Compose 只运行数据库，不包含 
 - 当前没有用户系统，文档库全局共享；不自动导入浏览器旧数据或 `DATA_DIR` 历史目录，也不提供恢复或物理清理接口。
 - 文档读取/保存返回 `ETag`；保存必须提交 `If-Match`，缺失返回 428，版本冲突返回 409。通过原内容二进制原子比较保护并发更新，不需要历史兼容或数据迁移。
 - 解析队列满载时返回 `503 / PARSE_QUEUE_FULL`，任务标记失败并移除尚未处理的上传文件；创建数据库任务失败也会清理该次上传。
-- Adapter 不推测性合并表格前置正文；空结果及缺失资源/无法转换的内容分别使任务以 `DOCUMENT_CONTENT_EMPTY`、`DOCUMENT_CONTENT_INCOMPLETE` 失败，保留原始结果但不保存部分成功文档。未知纯文本和已检测到的不规则多栏通过 `ParagraphBlock.reviewNote` 保留文字并提示复核。
+- Adapter 不推测性合并表格前置正文；空结果及缺失资源/无法转换的内容分别使任务以 `DOCUMENT_CONTENT_EMPTY`、`DOCUMENT_CONTENT_INCOMPLETE` 失败，保留原始结果但不保存部分成功文档。未知纯文本和已检测到的不规则多栏保留为普通段落；上游明确删除且几何唯一匹配的跨页表格空片段直接跳过，不生成或持久化复核提示。
 - Flyway 使用直连 JDBC 执行迁移，业务访问仍使用 Druid；这是为了规避 Druid 1.2.8 将 Flyway 对受限 `performance_schema` 的可选探测判定为致命连接错误。
 
 ## 实现说明

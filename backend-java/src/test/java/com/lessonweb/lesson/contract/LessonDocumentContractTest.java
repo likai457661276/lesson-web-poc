@@ -29,7 +29,7 @@ class LessonDocumentContractTest extends MySqlContractTest {
                   "metadata": {"sourceType": "pdf", "sourceFileName": "lesson.pdf"},
                   "blocks": [
                     {"id":"1","type":"heading","level":1,"text":"目标","alignment":"left"},
-                    {"id":"2","type":"paragraph","text":"正文","reviewNote":"第 2 页需复核"},
+                    {"id":"2","type":"paragraph","text":"正文"},
                     {"id":"3","type":"list","items":["A"],"ordered":false},
                     {"id":"4","type":"table","html":"<table></table>"},
                     {"id":"5","type":"image","src":"/api/assets/a/1.png","alt":null},
@@ -43,7 +43,9 @@ class LessonDocumentContractTest extends MySqlContractTest {
         assertThat(document.metadata().sourceFileName()).isEqualTo("lesson.pdf");
         assertThat(document.blocks()).hasSize(6);
         assertThat(objectMapper.readTree(objectMapper.writeValueAsString(document))
-                .get("blocks").get(1).get("reviewNote").asText()).isEqualTo("第 2 页需复核");
+                .get("blocks").get(1)).isEqualTo(objectMapper.readTree("""
+                {"id":"2","type":"paragraph","text":"正文"}
+                """));
         assertThat(objectMapper.readTree(objectMapper.writeValueAsString(document))
                 .get("blocks").get(0).get("type").asText()).isEqualTo("heading");
     }
@@ -61,17 +63,17 @@ class LessonDocumentContractTest extends MySqlContractTest {
     }
 
     @Test
-    void unknownSourceTextBecomesReviewedV1ParagraphWithoutProviderFields() throws Exception {
+    void unknownSourceTextBecomesV1ParagraphWithoutProviderFields() throws Exception {
         var raw = new MineruParseResult(objectMapper.readTree("""
                 [{"type":"unrecognized","text":"Independent text","page_idx":2,"bbox":[100,100,400,200]}]
                 """), objectMapper.createArrayNode(), objectMapper.createObjectNode(), Path.of("unused"));
-        var document = new MineruLessonDocumentAdapter().convert(raw, "review", "independent.pdf", Map.of());
+        var document = new MineruLessonDocumentAdapter().convert(raw, "plain", "independent.pdf", Map.of());
         String json = objectMapper.writeValueAsString(document);
         assertThat(objectMapper.readValue(json, LessonDocument.class)).isEqualTo(document);
         var block = objectMapper.readTree(json).path("blocks").get(0);
         assertThat(block.path("type").asText()).isEqualTo("paragraph");
         assertThat(block.path("text").asText()).isEqualTo("Independent text");
-        assertThat(block.path("reviewNote").asText()).contains("第 3 页", "未识别内容类型");
+        assertThat(block.size()).isEqualTo(3);
         assertThat(json).doesNotContain("page_idx", "bbox", "unrecognized");
     }
 }

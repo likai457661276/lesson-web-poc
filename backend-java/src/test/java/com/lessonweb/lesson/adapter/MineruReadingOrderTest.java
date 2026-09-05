@@ -26,10 +26,9 @@ class MineruReadingOrderTest {
     }
 
     @Test
-    void flagsAmbiguousTextWithoutReplacingOrDroppingTheOriginal() {
+    void retainsAmbiguousTextWithoutReplacingOrDroppingTheOriginal() {
         ParagraphBlock result = (ParagraphBlock) order.restore(item("原始文字与坐标结果不一致"), layout(1, 60), "block");
         assertThat(result.text()).isEqualTo("原始文字与坐标结果不一致");
-        assertThat(result.reviewNote()).contains("第 1 页", "复核阅读顺序");
     }
 
     @Test
@@ -47,33 +46,30 @@ class MineruReadingOrderTest {
     }
 
     @Test
-    void retainsUnequalColumnsWithAnActionableReviewNote() {
+    void retainsUnequalColumnsAsOriginalText() {
         ObjectNode irregular = layout(1, 60);
         ArrayNode spans = (ArrayNode) irregular.path("pdf_info").get(0).path("preproc_blocks")
                 .get(0).path("lines").get(2).path("spans");
         spans.remove(1);
         ParagraphBlock result = (ParagraphBlock) order.restore(item("甲一乙一甲二乙二甲三"), irregular, "block");
         assertThat(result.text()).isEqualTo("甲一乙一甲二乙二甲三");
-        assertThat(result.reviewNote()).contains("分段不规则", "复核阅读顺序");
     }
 
     @Test
-    void flagsShortColumnsWithoutInventingMissingRows() {
+    void retainsShortColumnsWithoutInventingMissingRows() {
         ObjectNode shortColumns = layout(1, 60);
         ((ArrayNode) shortColumns.path("pdf_info").get(0).path("preproc_blocks").get(0).path("lines")).remove(2);
         ParagraphBlock result = (ParagraphBlock) order.restore(item("甲一乙一甲二乙二"), shortColumns, "block");
         assertThat(result.text()).isEqualTo("甲一乙一甲二乙二");
-        assertThat(result.reviewNote()).contains("复核阅读顺序");
     }
 
     @Test
-    void keepsMixedFormulaContentForReviewRatherThanDroppingIt() {
+    void keepsMixedFormulaContentWithoutDroppingIt() {
         ObjectNode mixed = layout(1, 60);
         ((ObjectNode) mixed.path("pdf_info").get(0).path("preproc_blocks").get(0)
                 .path("lines").get(0).path("spans").get(1)).put("type", "inline_equation");
         ParagraphBlock result = (ParagraphBlock) order.restore(item("甲一乙一甲二乙二甲三乙三"), mixed, "block");
         assertThat(result.text()).isEqualTo("甲一乙一甲二乙二甲三乙三");
-        assertThat(result.reviewNote()).contains("文字与版面信息不一致");
     }
 
     private ObjectNode item(String text) {

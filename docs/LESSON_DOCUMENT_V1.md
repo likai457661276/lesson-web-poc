@@ -19,7 +19,7 @@
 
 ```ts
 type HeadingBlock = { id: string; type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; text: string; alignment: 'left' | 'center' | 'right' }
-type ParagraphBlock = { id: string; type: 'paragraph'; text: string; reviewNote?: string | null }
+type ParagraphBlock = { id: string; type: 'paragraph'; text: string }
 type ListBlock = { id: string; type: 'list'; items: string[]; ordered: boolean }
 type TableBlock = { id: string; type: 'table'; html: string }
 type ImageBlock = { id: string; type: 'image'; src: string; alt?: string | null }
@@ -32,13 +32,13 @@ type FormulaBlock = { id: string; type: 'formula'; latex: string }
 
 Adapter 保留 Provider 返回的内容块边界和顺序，不根据左边缘相近、文字块数量或表格宽度，把表格前面的标题和正文合并成表格行。标题层级保持为 heading，表格只包含 Provider 实际提供的表格内容与 caption。
 
-Adapter 可从 Provider 的行内文字及版面信息恢复多栏内容：至少三行具有一致的 2～4 列和持续的栏间空隙，且行内文字拼接后必须与原段落完全一致（忽略空白）。确认后转换为一个按列阅读的通用 HTML 表格；坐标、Provider 字段不进入协议。至少两行存在一致栏间空隙，但行数不足、其他行缺列、含非文字 span 或文字无法完整核对时，保留原文并通过可选 `ParagraphBlock.reviewNote` 提示原页码和人工复核原因。Web 将提示放在可编辑正文之外，DOCX 同样保留提示。缺少可靠版面信息时不猜测分栏；跨块、跨页多栏和未检测到的复杂版面仍依赖 Provider 阅读顺序。
+Adapter 可从 Provider 的行内文字及版面信息恢复多栏内容：至少三行具有一致的 2～4 列和持续的栏间空隙，且行内文字拼接后必须与原段落完全一致（忽略空白）。确认后转换为一个按列阅读的通用 HTML 表格；坐标、Provider 字段不进入协议。存在一致栏间空隙，但行数不足、其他行缺列、含非文字 span 或文字无法完整核对时，保留原始段落，不生成或持久化复核提示。缺少可靠版面信息时不猜测分栏；跨块、跨页多栏和未检测到的复杂版面仍依赖 Provider 阅读顺序。
 
-`ParagraphBlock.reviewNote` 也用于未知内容类型的纯文本降级：保留 text，并提示页码（若可用）、内容块序号及结构复核原因，不把未知 Provider 类型传到前端。该提示不代表 OCR 已逐字校验。协议字段不增加，六类内容块不变。
+未知内容类型只有纯文本且不含无法表达的结构时，转换为普通 paragraph，保留 text，不把未知 Provider 类型传到前端，也不附加诊断字段。段落仅包含 id、type 和 text；Web 与 DOCX 只输出正文。
 
 解析完整性检查：空结果返回 `DOCUMENT_CONTENT_EMPTY`；非对象内容块、缺失图片资源（含表格内图片）、缺少 HTML 或有效单元格的表格、无法转换的列表条目、空标题/公式及无法保留的未知结构返回 `DOCUMENT_CONTENT_INCOMPLETE`。异常状态码为 422；当前上传接口是异步接口，上传受理仍为 202，任务查询为 200，随后通过 `status: failed` 与 `error.code` / `error.message` 报告转换失败，不保存部分文档为成功。消息只包含位置和失败原因，不暴露 Provider 路径或资源 URL。原始解析结果仍保留用于诊断。表格只有截图而没有结构化内容时明确失败，不用截图冒充可编辑表格。
 
-MinerU 跨页表格可能留下无 HTML、图片、标题或脚注的空片段。只有同页几何唯一匹配的 `para_blocks` 表格内所有 `table_body` 都明确标记 `lines_deleted: true` 且 `lines` 为空时，Adapter 才将此片段表示为空 text 的复核段落，提示核对跨页内容；不猜测它已完整合并，也不生成虚构单元格。此时保留其他可用内容并显示提示，不把空片段作为独立表格报错或静默丢弃。缺少标记、坐标不匹配或匹配不唯一时仍按无法转换处理；整份文档只有复核提示而没有可用内容时仍返回 `DOCUMENT_CONTENT_EMPTY`。
+MinerU 跨页表格可能留下无 HTML、文字、图片、标题或脚注的空片段。只有同页几何唯一匹配的 `para_blocks` 表格内所有 `table_body` 都明确标记 `lines_deleted: true` 且 `lines` 为空时，Adapter 才跳过此片段，不生成空段落、提示或虚构单元格，不据此宣称上游已完整合并。其他可用内容的顺序保持不变。缺少标记、坐标不匹配或匹配不唯一时仍按无法转换处理；整份文档只含已删除空片段而没有可用内容时仍返回 `DOCUMENT_CONTENT_EMPTY`。前端和导出器无需识别或过滤 Provider 空片段。
 
 DOCX 支持中文公式文本和中文上下标，例如 `A_{底}` 与 `V_{\text{总体}}`，以及上/下划线和上方重音（如 `\overline{PQ}`、`\underline{uv}`、`\hat{z}`、`\vec{v}`）。这些装饰输出为 Word 原生公式结构，不作为尾随字符拼接。未支持的 MathML 节点或装饰结构明确拒绝，不递归摊平为看似成功的公式。若公式无法转换为 Word 可编辑公式，单篇和批量导出均返回 `422 / DOCX_FORMULA_UNSUPPORTED`，前端显示失败，不输出 LaTeX 源码替代。KaTeX 可渲染不代表当前 DOCX 转换器支持其全部命令；矩阵等未支持结构仍可能被拒绝。
 

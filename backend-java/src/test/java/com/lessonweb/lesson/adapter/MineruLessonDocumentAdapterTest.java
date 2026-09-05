@@ -209,14 +209,14 @@ class MineruLessonDocumentAdapterTest {
     }
 
     @Test
-    void retainsUnknownTextWithReviewNoteAndSourceLocation() throws Exception {
+    void retainsUnknownTextAsPlainParagraph() throws Exception {
         JsonNode content = objectMapper.readTree("""
                 [{"type":"unrecognized","text":"Independent source text","page_idx":6}]
                 """);
         var document = adapter.convert(result(content, objectMapper.createArrayNode()), "unknown", "report.pdf", Map.of());
         ParagraphBlock block = (ParagraphBlock) document.blocks().get(0);
         assertThat(block.text()).isEqualTo("Independent source text");
-        assertThat(block.reviewNote()).contains("第 7 页", "第 1 个内容块", "未识别内容类型");
+        assertThat(block).isEqualTo(new ParagraphBlock("block-0001", "Independent source text"));
     }
 
     @Test
@@ -232,19 +232,18 @@ class MineruLessonDocumentAdapterTest {
 
     @ParameterizedTest
     @ValueSource(doubles = {1, 0.001})
-    void representsExplicitlyDeletedCrossPageFragmentsAsReviewNotes(double scale) throws Exception {
+    void skipsExplicitlyDeletedCrossPageFragmentsWithoutPlaceholderBlocks(double scale) throws Exception {
         JsonNode content = objectMapper.readTree("""
                 [{"type":"table","table_body":"<table><tr><td>Combined observations</td></tr></table>"},
-                 {"type":"table","img_path":"","table_caption":[],"table_footnote":[],"page_idx":8,"bbox":[100,200,900,800]}]
+                 {"type":"table","img_path":"","table_caption":[],"table_footnote":[],"page_idx":8,"bbox":[100,200,900,800]},
+                 {"type":"text","text":"Following observations"}]
                 """);
         scaleBoxes(objectMapper.createArrayNode().add(content.get(1)), scale);
         var document = adapter.convert(new MineruParseResult(content, objectMapper.createArrayNode(), deletedTableLayout(), Path.of("unused")),
                 "continuation", "independent.pdf", Map.of());
         assertThat(document.blocks()).extracting(block -> block.type()).containsExactly("table", "paragraph");
         assertThat(((TableBlock) document.blocks().get(0)).html()).contains("Combined observations");
-        ParagraphBlock review = (ParagraphBlock) document.blocks().get(1);
-        assertThat(review.text()).isEmpty();
-        assertThat(review.reviewNote()).contains("第 9 页", "跨页内容是否完整");
+        assertThat(document.blocks().get(1)).isEqualTo(new ParagraphBlock("block-0003", "Following observations"));
     }
 
     @ParameterizedTest
@@ -272,7 +271,7 @@ class MineruLessonDocumentAdapterTest {
     }
 
     @Test
-    void reviewOnlyResultCannotBeReportedAsUsableDocument() throws Exception {
+    void deletedFragmentsOnlyCannotBeReportedAsUsableDocument() throws Exception {
         JsonNode content = objectMapper.readTree("""
                 [{"type":"table","page_idx":8,"bbox":[100,200,900,800]}]
                 """);

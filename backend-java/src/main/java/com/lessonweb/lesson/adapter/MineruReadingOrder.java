@@ -18,10 +18,10 @@ import static com.lessonweb.lesson.adapter.MineruGeometry.box;
 final class MineruReadingOrder {
     DocumentBlock restore(JsonNode item, JsonNode layout, String id) {
         JsonNode block = MineruGeometry.matchingBlock(item, layout, "preproc_blocks", "text");
-        return block == null ? null : restoreColumns(item, block, id, item.path("page_idx").asInt() + 1);
+        return block == null ? null : restoreColumns(item, block, id);
     }
 
-    private DocumentBlock restoreColumns(JsonNode item, JsonNode block, String id, int page) {
+    private DocumentBlock restoreColumns(JsonNode item, JsonNode block, String id) {
         List<List<Span>> rows = new ArrayList<>();
         for (JsonNode line : block.path("lines")) {
             List<Span> spans = new ArrayList<>();
@@ -51,7 +51,7 @@ final class MineruReadingOrder {
             if (leftEdge - rightEdge < lineHeight) return null;
         }
         if (rows.size() < 3 || completeRows.size() != rows.size()) {
-            return review(item, id, page, "栏内行数或文字分段不规则");
+            return originalParagraph(item, id);
         }
         String original = item.path("text").asText(item.path("content").asText(""));
         StringBuilder rowOrder = new StringBuilder();
@@ -63,7 +63,7 @@ final class MineruReadingOrder {
             }
         }
         if (!complete || !compact(original).equals(compact(rowOrder.toString()))) {
-            return review(item, id, page, "文字与版面信息不一致");
+            return originalParagraph(item, id);
         }
         Element table = new Element(Tag.valueOf("table"), "");
         table.attr("data-repeat-header", "false");
@@ -78,9 +78,8 @@ final class MineruReadingOrder {
 
     private String compact(String text) { return text.replaceAll("[\\s\\p{Z}]+", ""); }
 
-    private ParagraphBlock review(JsonNode item, String id, int page, String reason) {
-        return new ParagraphBlock(id, item.path("text").asText(item.path("content").asText("")),
-                "第 " + page + " 页存在疑似多栏内容，" + reason + "；已保留原文，请对照原文复核阅读顺序。");
+    private ParagraphBlock originalParagraph(JsonNode item, String id) {
+        return new ParagraphBlock(id, item.path("text").asText(item.path("content").asText("")));
     }
 
     private record Span(Box box, String text, String type) {}

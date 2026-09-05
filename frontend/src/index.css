@@ -180,7 +180,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid rgba(8, 127, 114, .22
 .lesson-list li { padding-left: 6px; margin: 5px 0; }
 .lesson-table { overflow-x: auto; margin: 28px 0; }
 .lesson-table caption { caption-side: top; text-align: left; font-weight: 600; font-size: 18px; padding: 0 0 14px; white-space: pre-wrap; }
-.document-review-note { padding: 10px 14px; border-left: 3px solid #986622; background: #fff4dd; color: #70460e; font-size: 14px; }
 .lesson-table table { width: 100%; border-collapse: collapse; font-family: ui-serif, 'Songti SC', STSong, serif; font-size: 14px; line-height: 1.65; }
 .lesson-table th, .lesson-table td { border: 1px solid #7d827f; padding: 7px 9px; text-align: left; vertical-align: middle; }
 .lesson-table th { background: #edf2ed; color: #24312d; }

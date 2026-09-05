@@ -59,6 +59,9 @@ public class MineruLessonDocumentAdapter {
         for (int index = 0; index < content.size(); index++) {
             JsonNode item = content.get(index);
             if (!item.isObject()) throw incomplete(item, index + 1, "内容块格式无效");
+            if ("table".equalsIgnoreCase(item.path("type").asText())
+                    && firstText(item, "table_body", "html").isBlank()
+                    && isDeletedTableFragment((ObjectNode) item, result.layout())) continue;
             DocumentBlock block = convertItem(
                     (ObjectNode) item, index + 1, assetUrls, result.ocrLayout(), result.layout());
             if (block == null) throw incomplete(item, index + 1, "内容块为空或无法转换");
@@ -68,7 +71,7 @@ public class MineruLessonDocumentAdapter {
             }
         }
         if (blocks.stream().allMatch(block -> block instanceof ParagraphBlock paragraph && paragraph.text().isBlank())) {
-            throw new AppException("DOCUMENT_CONTENT_EMPTY", "解析结果只有复核提示，没有可用内容，请检查源 PDF 或重新解析",
+            throw new AppException("DOCUMENT_CONTENT_EMPTY", "解析结果没有可用内容，请检查源 PDF 或重新解析",
                     HttpStatus.UNPROCESSABLE_ENTITY);
         }
         return new LessonDocument(
@@ -132,10 +135,6 @@ public class MineruLessonDocumentAdapter {
 
         if (itemType.equals("table")) {
             String tableHtml = firstText(item, "table_body", "html").trim();
-            if (tableHtml.isEmpty() && isDeletedTableFragment(item, layout)) {
-                return new ParagraphBlock(blockId, "", location(item, index)
-                        + "：上游已移除此页表格片段的独立内容，可能已合并到前面的表格；请对照原文核对跨页内容是否完整。");
-            }
             tableHtml = rewriteTableFormulas(tableHtml);
             if (!tableHtml.isEmpty()) {
                 Document html = Jsoup.parseBodyFragment(tableHtml);
@@ -195,10 +194,10 @@ public class MineruLessonDocumentAdapter {
                 List<String> items = lines.stream().map(line -> LIST_PREFIX.matcher(line).replaceFirst("")).toList();
                 return new ListBlock(blockId, items, ordered);
             }
-            return new ParagraphBlock(blockId, text, null);
+            return new ParagraphBlock(blockId, text);
         }
         if (!text.isEmpty() && !hasStructuredContent(item)) {
-            return new ParagraphBlock(blockId, text, location(item, index) + "：未识别内容类型，已保留文字；请核对结构和内容完整性。");
+            return new ParagraphBlock(blockId, text);
         }
         throw incomplete(item, index, "内容类型或结构尚不支持，无法完整转换");
     }
